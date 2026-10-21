@@ -31,7 +31,23 @@
 
 ## Verified defects
 
-No implementation has been inspected or executed as part of preparing this specification. Therefore, **there are currently no verified implementation bugs recorded**. Do not convert the risks above into claims of observed defects.
+No implementation has been inspected or executed as part of preparing this specification. Defects below were observed in the implementation itself. Do not convert the risks above into claims of observed defects.
+
+### OR-021 — Engine ignored a `shutdown` request until stdin closed
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** Linux, engine 0.1.0 run directly (not under the desktop shell).
+- **Steps to reproduce:**
+  1. Start `omnirecall-engine --data-dir <dir>` with a pipe on stdin.
+  2. Send a `shutdown` request and keep stdin open.
+- **Expected:** the engine answers and exits.
+- **Actual:** it answered `{"stopping": true}` but stayed blocked reading stdin until EOF. The desktop shell was not affected, because it closes stdin right after `shutdown`.
+- **Evidence:** a seeding script hung for 20 s waiting on the process (Phase 2 live run).
+- **Root cause:** `request_stop` only set a flag; the main thread was blocked in `readline` and never rechecked it.
+- **Fix plan:** after answering, interrupt the main thread's read with a signal aimed at that thread (POSIX). On Windows the shell's stdin close remains the stop path.
+- **Regression test:** `tests/test_rpc_server.py::test_real_engine_exits_on_shutdown_request_with_stdin_open`.
+- **Resolution:** fixed in Phase 2 and verified by the regression test.
 
 Use this template when a real bug is found:
 

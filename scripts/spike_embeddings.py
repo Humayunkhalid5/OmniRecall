@@ -24,11 +24,17 @@ def main() -> None:
     base = rss_mb()
     start = time.perf_counter()
     vectors = embedder.embed(["warm up"])
-    print(f"cold load+first embed: {(time.perf_counter() - start) * 1000:.0f} ms, rss {base:.0f}->{rss_mb():.0f} MB")
+    print(
+        f"cold load+first embed: {(time.perf_counter() - start) * 1000:.0f} ms, rss {base:.0f}->{rss_mb():.0f} MB"
+    )
     assert vectors.shape == (1, 384), vectors.shape
     pairs = [
         ("A cat is sleeping on the mat", "A kitten naps on a rug", "high"),
-        ("How do I fix a borrow of moved value error in Rust?", "error[E0382]: borrow of moved value", "high"),
+        (
+            "How do I fix a borrow of moved value error in Rust?",
+            "error[E0382]: borrow of moved value",
+            "high",
+        ),
         ("The quarterly review moved to Thursday", "Recipe for chocolate chip cookies", "low"),
         ("Photosynthesis happens in chloroplasts", "Stock market closed lower today", "low"),
     ]
@@ -48,7 +54,9 @@ def main() -> None:
         print(f"batch of 32 x 500 chars: {(time.perf_counter() - start) * 1000:.0f} ms")
     start = time.perf_counter()
     embedder.embed(["what did I copy about the quarterly review"])
-    print(f"single query embed: {(time.perf_counter() - start) * 1000:.1f} ms; peak rss {rss_mb():.0f} MB")
+    print(
+        f"single query embed: {(time.perf_counter() - start) * 1000:.1f} ms; peak rss {rss_mb():.0f} MB"
+    )
 
 
 if __name__ == "__main__":

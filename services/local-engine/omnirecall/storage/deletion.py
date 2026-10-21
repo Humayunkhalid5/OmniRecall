@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from pathlib import Path
 
 from omnirecall import logs
@@ -17,8 +18,14 @@ STORES = ["vectors", "sqlite", "fts", "media"]
 
 class DeletionService:
     def __init__(
-        self, db: Database, repo: Repository, vectors: VectorStore, media_root: Path
+        self,
+        db: Database,
+        repo: Repository,
+        vectors: VectorStore,
+        media_root: Path,
+        lock: threading.RLock | None = None,
     ) -> None:
+        self.lock = lock or threading.RLock()
         self.db = db
         self.repo = repo
         self.vectors = vectors
@@ -51,6 +58,10 @@ class DeletionService:
 
     def process(self) -> int:
         """Run cleanup for all open tombstones. Returns how many completed."""
+        with self.lock:
+            return self._process()
+
+    def _process(self) -> int:
         tombstones = self.repo.open_tombstones()
         if not tombstones:
             return 0
@@ -120,6 +131,10 @@ class DeletionService:
 
     def clear_all(self) -> int:
         """Delete every item and its derived data. Settings, sources, and exclusions stay."""
+        with self.lock:
+            return self._clear_all()
+
+    def _clear_all(self) -> int:
         count = int(self.db.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0])
         self.vectors.drop()
         with self.db.write() as conn:

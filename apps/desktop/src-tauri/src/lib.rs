@@ -1,56 +1,27 @@
 //! OmniRecall desktop shell: owns window lifecycle, the engine sidecar, and
 //! OS integration. The UI reaches the engine only through the allow-listed
-//! commands below.
+//! commands in `commands.rs` (D-016).
 
+mod commands;
 mod engine;
 mod paths;
 
-use serde_json::Value;
-use tauri::{Emitter, Manager, State};
+use std::path::PathBuf;
 
-use engine::{EngineEvent, EngineState, RestartPolicy, RpcError, Supervisor};
+use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
-/// Engine methods the UI may call directly. Methods that take filesystem
-/// paths are deliberately absent: those go through dedicated commands that
-/// obtain paths from native dialogs or drop events, never from the UI.
-const UI_METHODS: &[&str] = &["health", "status"];
+use engine::{EngineEvent, RestartPolicy, Supervisor};
 
-struct AppState {
-    engine: Supervisor,
-}
-
-#[tauri::command]
-fn engine_state(state: State<'_, AppState>) -> EngineState {
-    state.engine.state()
-}
-
-#[tauri::command]
-fn engine_restart(state: State<'_, AppState>) {
-    state.engine.restart();
-}
-
-#[tauri::command]
-async fn engine_call(
-    state: State<'_, AppState>,
-    method: String,
-    params: Option<Value>,
-) -> Result<Value, RpcError> {
-    if !UI_METHODS.contains(&method.as_str()) {
-        return Err(RpcError::local(
-            "forbidden_method",
-            "This action is not available from the UI",
-        ));
-    }
-    state
-        .engine
-        .request(&method, params.unwrap_or(Value::Object(Default::default())))
-        .await
+pub struct AppState {
+    pub engine: Supervisor,
+    pub data_dir: PathBuf,
 }
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
@@ -74,13 +45,32 @@ pub fn run() {
             );
             let runner = supervisor.clone();
             tauri::async_runtime::spawn(async move { runner.start() });
-            app.manage(AppState { engine: supervisor });
+            app.manage(AppState {
+                engine: supervisor,
+                data_dir,
+            });
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // Files dropped on the window come from the OS, not from page
+            // script, so they may be imported (D-016).
+            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+                let app = window.app_handle().clone();
+                let paths = paths.clone();
+                tauri::async_runtime::spawn(async move {
+                    commands::import_os_paths(&app, paths).await;
+                });
+            }
+        })
         .invoke_handler(tauri::generate_handler![
-            engine_state,
-            engine_restart,
-            engine_call
+            commands::engine_state,
+            commands::engine_restart,
+            commands::engine_call,
+            commands::import_files,
+            commands::import_folder,
+            commands::install_model_file,
+            commands::open_item_source,
+            commands::reveal_data_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while building OmniRecall")

@@ -50,6 +50,7 @@ class JobRunner:
             return self._active
 
     def start(self) -> None:
+        self._stop.clear()
         recovered = self.repo.reset_running_jobs()
         if recovered:
             logs.info("jobs_recovered", count=recovered)
@@ -63,8 +64,9 @@ class JobRunner:
             self._wake.notify_all()
 
     def stop(self, timeout: float = 30.0) -> None:
-        self._stop.set()
-        self.wake()
+        with self._wake:
+            self._stop.set()
+            self._wake.notify_all()
         for thread in self._threads:
             thread.join(timeout=timeout)
         self._threads.clear()
@@ -87,8 +89,10 @@ class JobRunner:
                 logs.error("job_claim_failed", reason=type(exc).__name__)
                 job = None
             if job is None:
+                timeout = self._wait_time()
                 with self._wake:
-                    self._wake.wait(timeout=self._wait_time())
+                    if not self._stop.is_set():
+                        self._wake.wait(timeout=timeout)
                 continue
             self.run_one(job)
 
@@ -124,5 +128,18 @@ class JobRunner:
 
 
 PERMANENT_ERRORS = frozenset(
-    {"unsupported_format", "limit_exceeded", "invalid_params", "not_found", "extraction_empty"}
+    {
+        "unsupported_format",
+        "limit_exceeded",
+        "invalid_params",
+        "not_found",
+        "extraction_empty",
+        "model_missing",
+        "source_missing",
+        "payload_missing",
+        "encrypted_file",
+        "malformed_file",
+        "binary_content",
+        "unsupported_source",
+    }
 )

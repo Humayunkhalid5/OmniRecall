@@ -15,7 +15,10 @@ FONT_DIR = Path("/usr/share/fonts/truetype/dejavu")
 
 FIXTURES = {
     "terminal_error": {
-        "bg": (24, 24, 27), "fg": (229, 231, 235), "font": "DejaVuSansMono.ttf", "size": 22,
+        "bg": (24, 24, 27),
+        "fg": (229, 231, 235),
+        "font": "DejaVuSansMono.ttf",
+        "size": 22,
         "lines": [
             "$ cargo build --release",
             "error[E0382]: borrow of moved value: `config`",
@@ -24,7 +27,10 @@ FIXTURES = {
         ],
     },
     "slide_photosynthesis": {
-        "bg": (255, 255, 255), "fg": (17, 24, 39), "font": "DejaVuSans.ttf", "size": 34,
+        "bg": (255, 255, 255),
+        "fg": (17, 24, 39),
+        "font": "DejaVuSans.ttf",
+        "size": 34,
         "lines": [
             "Photosynthesis",
             "Light reactions occur in the thylakoid",
@@ -33,7 +39,10 @@ FIXTURES = {
         ],
     },
     "chat_message": {
-        "bg": (243, 244, 246), "fg": (31, 41, 55), "font": "DejaVuSans.ttf", "size": 18,
+        "bg": (243, 244, 246),
+        "fg": (31, 41, 55),
+        "font": "DejaVuSans.ttf",
+        "size": 18,
         "lines": [
             "Priya: The quarterly review moved to Thursday 3pm",
             "Sam: Can you share the budget spreadsheet before then?",
@@ -41,7 +50,10 @@ FIXTURES = {
         ],
     },
     "small_ui_text": {
-        "bg": (255, 255, 255), "fg": (55, 65, 81), "font": "DejaVuSans.ttf", "size": 13,
+        "bg": (255, 255, 255),
+        "fg": (55, 65, 81),
+        "font": "DejaVuSans.ttf",
+        "size": 13,
         "lines": [
             "Settings  >  Network  >  Proxy configuration",
             "Use system proxy settings for all connections",

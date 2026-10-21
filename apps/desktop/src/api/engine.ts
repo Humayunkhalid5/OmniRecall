@@ -1,0 +1,118 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  ConsistencyReport,
+  EngineState,
+  EngineStatus,
+  FormatInfo,
+  ImportSummary,
+  Item,
+  ItemDetail,
+  ItemStatus,
+  ModelInfo,
+  RpcError,
+  SearchResponse,
+  SourceType,
+} from "./types";
+
+export class EngineCallError extends Error {
+  readonly code: string;
+  readonly rpc: RpcError;
+
+  constructor(rpc: RpcError) {
+    super(rpc.message);
+    this.rpc = rpc;
+    this.code = rpc.data?.code ?? String(rpc.code);
+  }
+}
+
+function toError(raw: unknown): EngineCallError {
+  if (raw && typeof raw === "object" && "message" in raw) {
+    return new EngineCallError(raw as RpcError);
+  }
+  return new EngineCallError({ code: -1, message: String(raw), data: { code: "unknown" } });
+}
+
+async function call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  try {
+    return await invoke<T>("engine_call", { method, params });
+  } catch (raw) {
+    throw toError(raw);
+  }
+}
+
+async function command<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+  try {
+    return await invoke<T>(name, args);
+  } catch (raw) {
+    throw toError(raw);
+  }
+}
+
+export interface SearchFilters {
+  source_types?: SourceType[];
+  captured_after?: string;
+  captured_before?: string;
+}
+
+export const engine = {
+  state: () => command<EngineState>("engine_state"),
+  restart: () => command<null>("engine_restart"),
+  status: () => call<EngineStatus>("status"),
+  search: (query: string, filters: SearchFilters = {}) =>
+    call<SearchResponse>("search", { query, filters }),
+  formats: () => call<{ documents: FormatInfo[] }>("formats.list"),
+  listItems: (status?: ItemStatus[], limit = 100, offset = 0) =>
+    call<{ items: Item[]; counts: Partial<Record<ItemStatus, number>> }>("items.list", {
+      ...(status ? { status } : {}),
+      limit,
+      offset,
+    }),
+  getItem: (itemId: string) => call<ItemDetail>("items.get", { item_id: itemId }),
+  importText: (text: string, label?: string) =>
+    call<{ item: Item; created: boolean }>("items.import_text", label ? { text, label } : { text }),
+  deleteItem: (itemId: string) =>
+    call<{ item_id: string; status: ItemStatus }>("items.delete", { item_id: itemId }),
+  retryItem: (itemId: string) => call<{ item_id: string }>("items.retry", { item_id: itemId }),
+  cancelItem: (itemId: string) => call<{ item_id: string }>("jobs.cancel", { item_id: itemId }),
+  verifyIndex: () => call<ConsistencyReport>("index.verify"),
+  rebuildIndex: () => call<ConsistencyReport>("index.rebuild"),
+  clearIndex: () => call<{ cleared: number }>("index.clear", { confirm: true }),
+  getSettings: () =>
+    call<{ settings: Record<string, unknown>; defaults: Record<string, unknown> }>("settings.get"),
+  updateSettings: (changes: Record<string, unknown>) =>
+    call<{ settings: Record<string, unknown> }>("settings.update", { changes }),
+  models: () => call<{ models: ModelInfo[]; models_dir: string }>("models.list"),
+  downloadModel: (modelId: string) =>
+    call<{ state: string }>("models.download", { model_id: modelId }),
+  cancelModel: (modelId: string) => call<null>("models.cancel", { model_id: modelId }),
+  installModelFile: (modelId: string) =>
+    command<{ installed?: boolean; cancelled?: boolean }>("install_model_file", { modelId }),
+  importFiles: () => command<ImportSummary>("import_files"),
+  importFolder: () => command<ImportSummary>("import_folder"),
+  openSource: (itemId: string) => command<null>("open_item_source", { itemId }),
+  revealDataDir: () => command<null>("reveal_data_dir"),
+};
+
+export interface EngineNotification {
+  method: string;
+  params: Record<string, unknown>;
+}
+
+export function onEngineState(handler: (state: EngineState) => void): Promise<UnlistenFn> {
+  return listen<EngineState>("engine://state", (event) => handler(event.payload));
+}
+
+export function onEngineNotification(
+  handler: (note: EngineNotification) => void,
+): Promise<UnlistenFn> {
+  return listen<EngineNotification>("engine://notification", (event) => handler(event.payload));
+}
+
+export function onImportResult(
+  handler: (result: { ok: boolean; summary?: ImportSummary; error?: RpcError }) => void,
+): Promise<UnlistenFn> {
+  return listen("import://result", (event) =>
+    handler(event.payload as { ok: boolean; summary?: ImportSummary; error?: RpcError }),
+  );
+}

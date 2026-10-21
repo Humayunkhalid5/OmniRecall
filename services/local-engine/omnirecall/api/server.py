@@ -41,6 +41,8 @@ class RpcServer:
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rpc")
         self._stopping = threading.Event()
         self._shutdown_hooks: list[Callable[[], None]] = []
+        # Unblocks the stdin read after a `shutdown` request has been answered.
+        self.interrupt: Callable[[], None] | None = None
 
     def register(self, method: str, handler: Handler) -> None:
         self._handlers[method] = handler
@@ -84,6 +86,8 @@ class RpcServer:
             result = handler(request.params)
             if request.id is not None:
                 self._write(protocol.result_message(request.id, result))
+            if self._stopping.is_set() and self.interrupt is not None:
+                self.interrupt()
         except EngineError as exc:
             code = protocol.INVALID_PARAMS if exc.code == "invalid_params" else protocol.APP_ERROR
             if exc.code == "protocol_mismatch":
@@ -208,6 +212,11 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
+    main_ident = threading.main_thread().ident
+    if hasattr(signal, "pthread_kill") and main_ident is not None:
+        # Deliver to the main thread so its blocking read is interrupted. On
+        # Windows the shell closes stdin after `shutdown`, which ends the read.
+        server.interrupt = lambda: signal.pthread_kill(main_ident, signal.SIGTERM)
 
     logs.info("engine_start", pid=os.getpid(), version=str(protocol.PROTOCOL_VERSION))
     server.notify(

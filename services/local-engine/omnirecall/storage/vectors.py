@@ -53,6 +53,7 @@ class VectorStore:
         self.model_id = model_id
         self._lock = threading.RLock()
         self._table: Any = None
+        self._writes_since_compaction = 0
 
     def _exists(self, name: str) -> bool:
         token: str | None = None
@@ -111,6 +112,15 @@ class VectorStore:
                 .when_not_matched_insert_all()
                 .execute(self.rows(records))
             )
+            self._after_write()
+
+    COMPACT_EVERY = 64
+
+    def _after_write(self) -> None:
+        """Each write adds a LanceDB version and fragment; compact periodically."""
+        self._writes_since_compaction += 1
+        if self._writes_since_compaction >= self.COMPACT_EVERY:
+            self.compact_and_cleanup()
 
     def delete_chunks(self, chunk_ids: list[str]) -> None:
         if not chunk_ids:
@@ -233,6 +243,7 @@ class VectorStore:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
                 table.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)
+            self._writes_since_compaction = 0
 
     def drop(self) -> None:
         with self._lock:
