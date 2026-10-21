@@ -1,0 +1,23 @@
+{
+  "id": "all-minilm-l6-v2",
+  "kind": "embedding",
+  "display_name": "all-MiniLM-L6-v2 (English sentence embeddings)",
+  "version": "7dbbc90392e2f80f3d3c277d6e90027e55de9125",
+  "upstream": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+  "license": "Apache-2.0",
+  "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+  "dimension": 384,
+  "max_tokens": 256,
+  "download": {
+    "url": "https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz",
+    "format": "tar.gz",
+    "size_bytes": 83178821,
+    "sha256": "913d7300ceae3b2dbc2c50d1de4baacab4be7b9380491c27fab7418616a16ec3",
+    "strip_prefix": "onnx/"
+  },
+  "files": {
+    "model.onnx": "4f148ba8ae9c2c7fbee4af2b132db8d06c6a6545b47fc83bbb98c3d22b8393e6",
+    "tokenizer.json": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0",
+    "config.json": "b567c7d5a55b636c95186aaf993f9a8920842b7e05a9e703e68b23cab2c3a670"
+  }
+}

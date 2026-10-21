@@ -1,0 +1,17 @@
+{
+  "id": "whisper-base",
+  "kind": "transcription",
+  "display_name": "Whisper base (multilingual, whisper.cpp ggml)",
+  "version": "ggml-base",
+  "upstream": "https://huggingface.co/ggerganov/whisper.cpp",
+  "license": "MIT",
+  "license_url": "https://github.com/openai/whisper/blob/main/LICENSE",
+  "download": {
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+    "format": "file",
+    "filename": "ggml-base.bin",
+    "size_bytes_approx": 148897792,
+    "sha1": "465707469ff3a37a2b9b8d8f89f2f99de7299dac"
+  },
+  "files": {}
+}

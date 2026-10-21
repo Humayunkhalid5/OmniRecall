@@ -1,0 +1,4 @@
+$ cargo build --release
+error[E0382]: borrow of moved value: `config`
+  --> src/main.rs:42:17
+help: consider cloning the value

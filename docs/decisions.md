@@ -1,0 +1,126 @@
+# OmniRecall — Decisions Log
+
+**Purpose:** record every settled choice so it is not reopened without new evidence. Newest entries go at the bottom. A later entry may replace an earlier one by naming it under **Replaces**.
+
+**Entry format:**
+
+### D-XXX — Short title
+- **Date:** YYYY-MM-DD
+- **Decision:** what was decided.
+- **Reason:** why.
+- **Docs updated:** files and sections changed.
+- **Replaces:** earlier decision ID, or none.
+
+---
+
+### D-001 — Document precedence
+- **Date:** 2026-10-21
+- **Decision:** when documents conflict, `rules.md` wins over `prd.md`, which wins over `design.md`, then `implementation_plan.md`, then `decisions.md`. `bugs.md` is status only.
+- **Reason:** remove ambiguity for contributors and coding agents.
+- **Docs updated:** `rules.md` §0.
+- **Replaces:** none.
+
+### D-002 — FTS5 hybrid retrieval is P0
+- **Date:** 2026-10-21
+- **Decision:** the SQLite FTS5 keyword index and rank fusion with vector search are MVP (P0). Explainable ranking stays P1. The search API accepts optional filters from MVP; the filter UI is P1.
+- **Reason:** the PRD listed FTS5 as P1 while the plan built it in Phase 1-2.
+- **Docs updated:** `prd.md` §4.
+- **Replaces:** none.
+
+### D-003 — Engine IPC is JSON-RPC over stdio
+- **Date:** 2026-10-21
+- **Decision:** the Python engine runs as a Tauri sidecar speaking versioned JSON-RPC 2.0 over stdin/stdout and opens no network port. Loopback HTTP is a fallback only.
+- **Reason:** removes the local network attack surface (OR-009) and token handling.
+- **Docs updated:** `design.md` §2, §3, §7; `implementation_plan.md` §1, §6; `rules.md` §2; `bugs.md` OR-009.
+- **Replaces:** none.
+
+### D-004 — Single schema and item states
+- **Date:** 2026-10-21
+- **Decision:** `design.md` §5 is the only schema definition. Item states add `skipped` and `deleting`, with transitions in `design.md` §10. New tables: `vector_outbox`, `tombstones`.
+- **Reason:** the schema was duplicated and had drifted; deletion needed a visible pending state.
+- **Docs updated:** `design.md` §5, §10; `implementation_plan.md` §5; `prd.md` §7.
+- **Replaces:** none.
+
+### D-005 — Default values, IDs, and formats
+- **Date:** 2026-10-21
+- **Decision:** adopt the starting defaults in `design.md` §11 and the ID, hash, and timestamp formats in `design.md` §12 (UUIDv7, deterministic chunk IDs, SHA-256, ISO 8601 UTC).
+- **Reason:** unspecified numbers forced guesswork. Defaults are tuned only with measurements.
+- **Docs updated:** `design.md` §6, §11, §12.
+- **Replaces:** none.
+
+### D-006 — Retention policy and search history
+- **Date:** 2026-10-21
+- **Decision:** keep screenshot images 7 days, then text only; cap app media at 5 GB, pruning oldest first; keep text items until deleted; do not store search queries by default. All values are configurable.
+- **Reason:** `rules.md` referred to an undefined retention policy and storage had to be bounded.
+- **Docs updated:** `prd.md` §4, §6; `design.md` §7, §11, §13.
+- **Replaces:** none.
+
+### D-007 — Physical deletion
+- **Date:** 2026-10-21
+- **Decision:** deletion uses SQLite `secure_delete`, FTS5 optimize, a WAL checkpoint, and LanceDB compaction with old-version cleanup before an item is reported deleted.
+- **Reason:** both stores otherwise keep deleted bytes on disk (OR-017).
+- **Docs updated:** `design.md` §7; `prd.md` §6; `bugs.md`.
+- **Replaces:** none.
+
+### D-008 — Export format
+- **Date:** 2026-10-21
+- **Decision:** export is a zip with `manifest.json`, `items.jsonl`, `chunks.jsonl`, and `media/`. Vectors are rebuilt on restore, not exported.
+- **Reason:** smaller exports that survive embedding model changes.
+- **Docs updated:** `design.md` §13; `implementation_plan.md` §6.
+- **Replaces:** none.
+
+### D-009 — Engine candidates and language scope
+- **Date:** 2026-10-21
+- **Decision:** Phase 0 compares RapidOCR (ONNX) and Tesseract 5 for OCR and validates `whisper.cpp` with a `base` model. The MVP officially supports English; a multilingual embedding model is a P1 candidate.
+- **Reason:** "selected per platform" gave no starting point; all-MiniLM-L6-v2 is mainly English.
+- **Docs updated:** `design.md` §3; `implementation_plan.md` §1, Phase 0; `prd.md` §5.
+- **Replaces:** none.
+
+### D-010 — Phase order and early measurement
+- **Date:** 2026-10-21
+- **Decision:** Phase 3 is clipboard plus shared privacy controls, Phase 4 images and screenshots, Phase 5 audio. A labeled evaluation corpus starts in Phase 1, with a relevance and latency baseline at the Phase 2 exit gate.
+- **Reason:** clipboard reuses the text pipeline and privacy controls must exist before screen capture; tuning needs numbers.
+- **Docs updated:** `implementation_plan.md` §4.
+- **Replaces:** none.
+
+### D-011 — Pipeline efficiency and vector tables
+- **Date:** 2026-10-21
+- **Decision:** batch embeddings, an embedding cache keyed by text hash and model, OCR-text dedup for screenshots, on-demand model loading with idle unload, and one LanceDB table per embedding model and dimension.
+- **Reason:** lower CPU and battery use; safe model upgrades and rollback.
+- **Docs updated:** `design.md` §3; `implementation_plan.md` Phase 2.
+- **Replaces:** none.
+
+### D-012 — OCR engine: Tesseract 5
+- **Date:** 2026-10-21
+- **Decision:** use Tesseract 5 (`eng`) through `pytesseract` behind the OCR adapter interface. RapidOCR is not shipped.
+- **Reason:** Phase 0 spike: mean CER 0.006 vs 0.068 (RapidOCR dropped word spaces, which breaks keyword search), 3–7× faster, about 36 MB vs 458 MB memory, and 245 MB smaller engine bundle. Cost: the Tesseract binary must be packaged per OS (Windows build in Phase 6).
+- **Docs updated:** `docs/measurements.md`, `docs/licenses.md`.
+- **Replaces:** none (resolves the D-009 comparison).
+
+### D-013 — Embedding model distribution and validation
+- **Date:** 2026-10-21
+- **Decision:** pin all-MiniLM-L6-v2 at upstream revision `7dbbc903…`; install from the Chroma ONNX mirror archive verified by SHA-256 (archive and per-file), by explicit user action or from a local archive file. Mean pooling + L2 normalization, max 256 tokens.
+- **Reason:** validated license (Apache-2.0), output dimension 384, tokenizer compatibility, normalization, and semantic sanity on the reference machine. A checksummed archive keeps the model out of the installer (OR-018).
+- **Docs updated:** `docs/licenses.md`, `docs/measurements.md`, `omnirecall/model_manifests/`.
+- **Replaces:** none.
+
+### D-014 — Transcription runtime: pywhispercpp
+- **Date:** 2026-10-21
+- **Decision:** use `pywhispercpp` 1.5.1 (MIT, prebuilt whisper.cpp wheels) with the `ggml-base` model, verified by its published SHA-1. Models are always loaded from a local path, never by name (by-name loading downloads).
+- **Reason:** in-process whisper.cpp without a separate build toolchain; wheels exist for Windows, Linux, and Apple Silicon. Accuracy is still to be measured (no model download was possible in the build environment).
+- **Docs updated:** `docs/licenses.md`, `docs/measurements.md`.
+- **Replaces:** none.
+
+### D-015 — Engine runtime and packaging
+- **Date:** 2026-10-21
+- **Decision:** Python 3.12, dependencies pinned with `uv` (`uv.lock`); the release sidecar is a PyInstaller one-dir build. Development runs the engine from source with `OMNIRECALL_ENGINE_SOURCE=<path> ` (`uv run --frozen`). Model manifests live inside the engine package (`omnirecall/model_manifests/`) so the frozen build carries them; `models/README.md` points there.
+- **Reason:** 3.12 has wheels for every pinned native dependency; PyInstaller cold start measured at about 150 ms.
+- **Docs updated:** `docs/measurements.md`, `README.md`.
+- **Replaces:** none.
+
+### D-016 — Narrow shell command surface
+- **Date:** 2026-10-21
+- **Decision:** the UI calls the engine only through an allow-list of methods. Methods that take filesystem paths are never exposed to the UI: file pickers, save dialogs, drag-and-drop, and "open original" run in Rust, which obtains the path from the OS and passes it to the engine.
+- **Reason:** design.md §3 ("no direct access to … arbitrary filesystem paths") and path-traversal control in §7.
+- **Docs updated:** `README.md` (architecture).
+- **Replaces:** none.

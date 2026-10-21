@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+dist/
+build/
+target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/
+*.onnx
+*.bin
+.DS_Store

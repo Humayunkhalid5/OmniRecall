@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: app commands only. File dialogs and opening files run in Rust, never from UI-supplied paths.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
