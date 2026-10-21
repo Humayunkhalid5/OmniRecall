@@ -1,0 +1,52 @@
+{"id": "q01", "lang": "en", "kind": "semantic", "query": "how do I take back my most recent commit without losing my edits", "expected": ["d01"]}
+{"id": "q02", "lang": "en", "kind": "keyword", "query": "E0382", "expected": ["d02"]}
+{"id": "q03", "lang": "en", "kind": "semantic", "query": "rust compiler complains a variable was used after being moved", "expected": ["d02"]}
+{"id": "q04", "lang": "en", "kind": "semantic", "query": "reclaim storage taken by old container images", "expected": ["d03"]}
+{"id": "q05", "lang": "en", "kind": "semantic", "query": "set up a virtual environment for a python project", "expected": ["d04"]}
+{"id": "q06", "lang": "en", "kind": "semantic", "query": "database server refusing connections on port 5432", "expected": ["d05"]}
+{"id": "q07", "lang": "en", "kind": "semantic", "query": "view output of a kubernetes container that crashed", "expected": ["d06"]}
+{"id": "q08", "lang": "en", "kind": "semantic", "query": "pattern to check if a string looks like an email", "expected": ["d07"]}
+{"id": "q09", "lang": "en", "kind": "semantic", "query": "turn off password authentication for remote login", "expected": ["d08"]}
+{"id": "q10", "lang": "en", "kind": "semantic", "query": "where does the calvin cycle take place", "expected": ["d09"]}
+{"id": "q11", "lang": "en", "kind": "semantic", "query": "which part of the cell makes most of the energy", "expected": ["d10"]}
+{"id": "q12", "lang": "en", "kind": "semantic", "query": "what started the revolution in France in 1789", "expected": ["d11"]}
+{"id": "q13", "lang": "en", "kind": "semantic", "query": "rule for differentiating a function inside another function", "expected": ["d12"]}
+{"id": "q14", "lang": "en", "kind": "semantic", "query": "what happens when the government caps prices below equilibrium", "expected": ["d13"]}
+{"id": "q15", "lang": "en", "kind": "semantic", "query": "when is the quarterly meeting now", "expected": ["d14"]}
+{"id": "q16", "lang": "en", "kind": "semantic", "query": "who is stuck on the payment integration", "expected": ["d15"]}
+{"id": "q17", "lang": "en", "kind": "semantic", "query": "deadline to cancel the supplier agreement before it renews", "expected": ["d16"]}
+{"id": "q18", "lang": "en", "kind": "semantic", "query": "how many engineers are we hiring next year", "expected": ["d17"]}
+{"id": "q19", "lang": "en", "kind": "semantic", "query": "what should I pack for the team trip", "expected": ["d18"]}
+{"id": "q20", "lang": "en", "kind": "semantic", "query": "baking with overripe bananas", "expected": ["d19"]}
+{"id": "q21", "lang": "en", "kind": "semantic", "query": "how often to feed bread yeast culture", "expected": ["d20"]}
+{"id": "q22", "lang": "en", "kind": "semantic", "query": "what seat did I get on the Frankfurt flight", "expected": ["d21"]}
+{"id": "q23", "lang": "en", "kind": "keyword", "query": "ABX92K", "expected": ["d21"]}
+{"id": "q24", "lang": "en", "kind": "semantic", "query": "until when can I cancel the Portugal hotel for free", "expected": ["d22"]}
+{"id": "q25", "lang": "en", "kind": "semantic", "query": "how long does it take to get a new passport", "expected": ["d23"]}
+{"id": "q26", "lang": "en", "kind": "semantic", "query": "teeth cleaning appointment time", "expected": ["d24"]}
+{"id": "q27", "lang": "en", "kind": "semantic", "query": "long distance run on the weekend for race preparation", "expected": ["d25"]}
+{"id": "q28", "lang": "en", "kind": "semantic", "query": "how many times a day should I take the antibiotics", "expected": ["d26"]}
+{"id": "q29", "lang": "en", "kind": "semantic", "query": "visitor wireless network name", "expected": ["d27"]}
+{"id": "q30", "lang": "en", "kind": "semantic", "query": "how much will the vehicle maintenance cost", "expected": ["d28"]}
+{"id": "q31", "lang": "en", "kind": "semantic", "query": "is flooding covered by my house policy", "expected": ["d29"]}
+{"id": "q32", "lang": "en", "kind": "semantic", "query": "why are the leaves on my houseplant turning yellow", "expected": ["d30"]}
+{"id": "q33", "lang": "en", "kind": "semantic", "query": "proxy port number in the network settings screenshot", "expected": ["d31"]}
+{"id": "q34", "lang": "en", "kind": "semantic", "query": "quote about systems being more important than goals", "expected": ["d32"]}
+{"id": "q35", "lang": "en", "kind": "semantic", "query": "episode about how containers changed world trade", "expected": ["d33"]}
+{"id": "q36", "lang": "en", "kind": "semantic", "query": "documents needed to file my taxes", "expected": ["d34"]}
+{"id": "q37", "lang": "en", "kind": "semantic", "query": "present ideas for my mother", "expected": ["d35"]}
+{"id": "q38", "lang": "en", "kind": "semantic", "query": "difference between left join and inner join", "expected": ["d36"]}
+{"id": "q39", "lang": "en", "kind": "semantic", "query": "put an element in the middle of the page with flexbox", "expected": ["d37"]}
+{"id": "q40", "lang": "en", "kind": "semantic", "query": "how long until the rooftop solar pays for itself", "expected": ["d38"]}
+{"id": "q41", "lang": "en", "kind": "semantic", "query": "notes from biology class about energy production", "expected": ["d09", "d10"]}
+{"id": "q42", "lang": "en", "kind": "semantic", "query": "travel bookings for upcoming trips", "expected": ["d21", "d22", "d43"]}
+{"id": "q43", "lang": "en", "kind": "semantic", "query": "command line fixes for developer tools", "expected": ["d01", "d03", "d04", "d06", "d08"]}
+{"id": "q44", "lang": "en", "kind": "keyword", "query": "Northwind", "expected": ["d16"]}
+{"id": "q45", "lang": "en", "kind": "semantic", "query": "health appointments I have scheduled", "expected": ["d24", "d41"]}
+{"id": "q46", "lang": "es", "kind": "semantic", "query": "cuándo es la reunión de presupuesto", "expected": ["d39"]}
+{"id": "q47", "lang": "es", "kind": "semantic", "query": "cómo hacer tortilla española", "expected": ["d40"]}
+{"id": "q48", "lang": "fr", "kind": "semantic", "query": "documents pour louer un logement", "expected": ["d42"]}
+{"id": "q49", "lang": "fr", "kind": "semantic", "query": "rendez-vous chez le docteur", "expected": ["d41"]}
+{"id": "q50", "lang": "de", "kind": "semantic", "query": "wie lange dauert die Fahrt nach München", "expected": ["d43"]}
+{"id": "q51", "lang": "de", "kind": "semantic", "query": "Frist für die Kündigung der Wohnung", "expected": ["d44"]}
+{"id": "q52", "lang": "en", "kind": "semantic", "query": "train ticket to Munich", "expected": ["d43"]}

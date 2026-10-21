@@ -145,9 +145,12 @@ This section is the **only** schema definition. Other documents refer here inste
 - `source_uri TEXT`
 - `captured_at TEXT NOT NULL`
 - `content_hash TEXT`
-- `media_uri TEXT`
+- `media_uri TEXT` (relative to the app media directory)
+- `media_status TEXT NOT NULL DEFAULT 'none'` (`none`, `present`, `pruned`, `deleted`)
+- `metadata_json TEXT NOT NULL DEFAULT '{}'` (validated source metadata from PRD §5: MIME type, modified time, page count, duration, display ID)
 - `status TEXT NOT NULL` (see §10 for allowed states)
 - `error_code TEXT`
+- `skip_reason TEXT` (why a `skipped` item was not indexed, for example `duplicate` or `excluded_pattern`)
 - `created_at TEXT NOT NULL`
 - `updated_at TEXT NOT NULL`
 - Unique index on `(source_type, content_hash)` so the same content is not ingested twice.
@@ -164,7 +167,9 @@ This section is the **only** schema definition. Other documents refer here inste
 - `embedding_model TEXT NOT NULL`
 - `created_at TEXT NOT NULL`
 
-Add an FTS5 virtual table for chunk text and maintain it through tested triggers or explicit transactional updates.
+Add an FTS5 virtual table for chunk text and maintain it through tested triggers or explicit transactional updates. Implemented as external-content `chunks_fts` (`porter unicode61 remove_diacritics 2`) with insert/update/delete triggers.
+
+A deleted item keeps only its row with `id`, `source_type`, timestamps, and status `deleted`; `content_hash`, `source_label`, `source_uri`, `media_uri`, and `metadata_json` are cleared, so the same content can be imported again.
 
 ### `jobs`
 - `id TEXT PRIMARY KEY`
@@ -207,6 +212,11 @@ Cross-store writes to LanceDB are recorded here in the same SQLite transaction a
 - `rule_value TEXT NOT NULL`
 - `enabled INTEGER NOT NULL DEFAULT 1`
 - `created_at TEXT NOT NULL`
+
+### `settings`
+- `key TEXT PRIMARY KEY`
+- `value_json TEXT NOT NULL` (validated against the settings model; defaults in §11)
+- `updated_at TEXT NOT NULL`
 
 ### `schema_migrations`
 - `version INTEGER PRIMARY KEY`
@@ -255,6 +265,8 @@ Deletion must be **physical**, because both stores keep deleted bytes by default
 5. Delete owned media files and their thumbnails.
 
 A regression test must insert a unique marker string, delete the item, and confirm the marker cannot be found by scanning the raw SQLite, WAL, and LanceDB files.
+
+Chunk text never enters LanceDB; it holds chunk ID, item ID, text hash, model ID, and vector. After deletion the test also confirms that the deleted chunks' text hashes and raw vector bytes are absent from every LanceDB file. LanceDB's transaction log keeps the delete predicate, which names the opaque item ID; it holds no content (implemented in `tests/test_deletion.py`).
 
 ## 8. UX states
 
