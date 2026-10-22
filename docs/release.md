@@ -9,7 +9,7 @@ How installers are made, what is checked, and what is not done yet (D-037).
 | App shell (Rust, Tauri 2) and UI | `apps/desktop`, built by `tauri build` |
 | Engine (Python 3.12, frozen) | PyInstaller one-dir build of `services/local-engine` (`packaging/omnirecall-engine.spec`), about 510 MB unpacked |
 | Audio decoder | `services/audio-decoder`, release build, in the engine folder |
-| Tesseract 5 with English data | Windows: the UB Mannheim build from Chocolatey. macOS: Homebrew's, with its libraries copied in and made relative (`dylibbundler`) and signed ad hoc. Linux: not bundled; the .deb and .rpm depend on the distribution's packages |
+| Tesseract 5 with English data | Windows: one static `tesseract.exe` built with vcpkg at a pinned commit, without libcurl, libarchive, or JBIG-KIT (`scripts/build_tesseract_windows.py`, D-042). macOS: Homebrew's, with its libraries copied in and made relative (`dylibbundler`) and signed ad hoc. Linux: not bundled; the .deb and .rpm depend on the distribution's packages |
 | License notices | `docs/licenses.md`, plus each Python package's license files inside the engine folder |
 
 Models are not in the installer. The user downloads them in Settings (`licenses.md`).
@@ -27,7 +27,7 @@ cd apps/desktop && npm ci
 npx tauri build --config src-tauri/tauri.release.conf.json --bundles deb   # or rpm, dmg, nsis
 ```
 
-Windows needs Tesseract installed (`choco install tesseract`); macOS needs `brew install tesseract dylibbundler`.
+On Windows, first run `python scripts/build_tesseract_windows.py build/tesseract-windows` (Visual Studio Build Tools and Git needed; about 8 minutes the first time). macOS needs `brew install tesseract dylibbundler`.
 
 ## What the release workflow checks
 
