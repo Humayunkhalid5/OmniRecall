@@ -54,6 +54,7 @@ A Rust-only backend can be reconsidered if deployment or resource measurements j
 ### Desktop UI
 - First-run consent and privacy education.
 - Search input, filters, results, item preview, and source links.
+- Visual system (D-044): tokens, fonts, and components in `apps/desktop/src/styles.css`; `/` or Ctrl/Cmd+K focuses search, Escape closes the item panel.
 - Import/drop zone and processing queue.
 - Capture indicators and one-action pause.
 - Settings for source toggles, exclusions, capture interval, model selection, storage, and diagnostics.

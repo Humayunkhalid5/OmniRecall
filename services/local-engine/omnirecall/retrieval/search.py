@@ -148,26 +148,34 @@ def fts_query(query: str) -> str | None:
 
 
 def make_snippet(text: str, query: str) -> tuple[str, list[list[int]]]:
-    """A window of the chunk around the first query term, with highlight ranges."""
+    """A window of the chunk around the first query term, with highlight ranges.
+
+    Matching is case-insensitive on the original text rather than on a
+    lowercased copy: lowercasing can change a string's length ("İ" becomes two
+    characters), which would shift every highlight after it. Offsets are
+    Python string indices (Unicode code points); the UI converts them.
+    """
     words = {t for t in _TOKEN.findall(query.lower()) if len(t) > 1}
     terms = {t for t in words if t not in STOPWORDS} or words
     # Match at the start of a word only, so "do" never lights up inside "undo".
-    patterns = [re.compile(rf"(?<!\w){re.escape(t)}") for t in terms]
-    lowered = text.lower()
-    first = min((m.start() for pat in patterns if (m := pat.search(lowered))), default=0)
+    patterns = [re.compile(rf"(?<!\w){re.escape(t)}", re.IGNORECASE) for t in terms]
+    first = min((m.start() for pat in patterns if (m := pat.search(text))), default=0)
     start = max(0, first - SNIPPET_CHARS // 3)
     if start > 0:
         space = text.rfind(" ", 0, start)
         start = space + 1 if space >= 0 and start - space < 30 else start
     end = min(len(text), start + SNIPPET_CHARS)
-    snippet = text[start:end]
+    if end < len(text):
+        # End on a word boundary rather than mid-word, unless that loses too much.
+        space = text.rfind(" ", start, end)
+        end = space if space > first and end - space < 30 else end
+    snippet = text[start:end].rstrip()
     prefix = "…" if start > 0 else ""
     suffix = "…" if end < len(text) else ""
     shown = prefix + snippet + suffix
     highlights: list[list[int]] = []
-    lowered_snippet = shown.lower()
     for pat in patterns:
-        for match in pat.finditer(lowered_snippet):
+        for match in pat.finditer(shown):
             highlights.append([match.start(), match.end()])
     highlights.sort()
     merged: list[list[int]] = []

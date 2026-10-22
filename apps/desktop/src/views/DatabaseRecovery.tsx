@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { engine, EngineCallError } from "../api/engine";
 import type { RecoveryReport, RecoveryStatus } from "../api/types";
+import { BrandMark } from "../components/BrandMark";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Notice } from "../components/Notice";
 import { formatBytes } from "../lib/format";
@@ -49,8 +50,19 @@ export function DatabaseRecovery({ recovery }: { recovery: RecoveryStatus }) {
 
   const restart = () => {
     setRestarting(true);
-    engine.restart().finally(() => setRestarting(false));
+    // A failed restart is reported through the next engine state.
+    engine
+      .restart()
+      .catch(() => undefined)
+      .finally(() => setRestarting(false));
   };
+
+  const brand = (
+    <div className="center-brand">
+      <BrandMark size={44} />
+      <h1>OmniRecall</h1>
+    </div>
+  );
 
   const restartButton = (
     <button type="button" className="primary" disabled={restarting} onClick={restart}>
@@ -61,7 +73,7 @@ export function DatabaseRecovery({ recovery }: { recovery: RecoveryStatus }) {
   if (database.reason === "schema_too_new") {
     return (
       <main className="center recovery">
-        <h1>OmniRecall</h1>
+        {brand}
         <Notice tone="warning" title="Your data was saved by a newer version of OmniRecall">
           <p>
             This version cannot open it. Install the newer version again to get back to your data.
@@ -76,7 +88,7 @@ export function DatabaseRecovery({ recovery }: { recovery: RecoveryStatus }) {
   if (outcome || database.state === "restart_needed") {
     return (
       <main className="center recovery">
-        <h1>OmniRecall</h1>
+        {brand}
         {outcome?.action === "recovered" ? (
           <RecoveredSummary report={outcome.report} />
         ) : (
@@ -96,7 +108,7 @@ export function DatabaseRecovery({ recovery }: { recovery: RecoveryStatus }) {
 
   return (
     <main className="center recovery">
-      <h1>OmniRecall</h1>
+      {brand}
       <Notice tone="error" title="Your OmniRecall database is damaged">
         <p>{reasonText[database.reason]}</p>
         <p className="muted small">

@@ -1,3 +1,4 @@
+import { Bug, Cpu, Gauge, HardDrive, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { engine, EngineCallError, type EngineNotification } from "../api/engine";
 import type { ConsistencyReport, EngineStatus, ModelInfo } from "../api/types";
@@ -15,9 +16,46 @@ interface Props {
   onChanged: () => void;
 }
 
+const SECTIONS: { id: string; label: string }[] = [
+  { id: "capture-heading", label: "Capture" },
+  { id: "exclusions-heading", label: "Exclusions" },
+  { id: "data-heading", label: "Your data" },
+  { id: "models-heading", label: "Models" },
+  { id: "limits-heading", label: "Limits" },
+  { id: "storage-heading", label: "Storage" },
+  { id: "index-heading", label: "Maintenance" },
+  { id: "report-heading", label: "Problem report" },
+];
+
+function jumpTo(id: string) {
+  const heading = document.getElementById(id);
+  heading?.closest("section")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+}
+
 export function SettingsView({ status, capture, refreshKey, onChanged }: Props) {
   return (
-    <section className="settings" aria-label="Settings">
+    <section className="settings view" aria-label="Settings">
+      <div className="page-head">
+        <p className="eyebrow">Settings</p>
+        <h2 className="page-title">You are in control</h2>
+        <p className="page-sub">
+          Choose what OmniRecall captures, what it keeps, and the local models it uses.
+        </p>
+      </div>
+      <nav className="settings-nav" aria-label="Settings sections">
+        <div className="chips">
+          {SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className="chip"
+              onClick={() => jumpTo(section.id)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
+      </nav>
       <CapturePanel controls={capture} />
       <ExclusionsPanel />
       <DataPanel refreshKey={refreshKey} />
@@ -122,7 +160,10 @@ function ModelsPanel({ onChanged }: { onChanged: () => void }) {
 
   return (
     <section className="panel" aria-labelledby="models-heading">
-      <h2 id="models-heading">Local models</h2>
+      <h2 id="models-heading">
+        <Cpu size={18} aria-hidden="true" />
+        Local models
+      </h2>
       <p className="muted">
         Models run on this device. Downloading contacts the listed source once; nothing you import
         is sent anywhere.
@@ -145,7 +186,7 @@ function ModelsPanel({ onChanged }: { onChanged: () => void }) {
                 {MODEL_PURPOSE[model.kind] ?? model.kind} · {formatBytes(model.size_bytes)} ·
                 License <span title={model.license_url}>{model.license}</span>
               </p>
-              <p className="muted small">Source: {model.download_url}</p>
+              <p className="muted small model-source">Source: {model.download_url}</p>
               {p && (
                 <div className="progress-row">
                   <progress max={100} value={pct} aria-label={`Downloading ${model.name}`} />
@@ -193,6 +234,11 @@ interface LimitsForm {
   results_shown: string;
 }
 
+/** A setting missing from an older engine shows as empty, never as "NaN". */
+function text(value: number): string {
+  return Number.isFinite(value) ? String(value) : "";
+}
+
 function LimitsPanel() {
   const [form, setForm] = useState<LimitsForm | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -200,10 +246,10 @@ function LimitsPanel() {
 
   const fill = (s: Record<string, unknown>) =>
     setForm({
-      max_file_mb: String(Math.round(Number(s.max_file_bytes) / MB)),
-      max_pdf_pages: String(s.max_pdf_pages),
-      max_audio_minutes: String(Math.round(Number(s.max_audio_seconds) / 60)),
-      results_shown: String(s.results_shown),
+      max_file_mb: text(Math.round(Number(s.max_file_bytes) / MB)),
+      max_pdf_pages: text(Number(s.max_pdf_pages)),
+      max_audio_minutes: text(Math.round(Number(s.max_audio_seconds) / 60)),
+      results_shown: text(Number(s.results_shown)),
     });
 
   useEffect(() => {
@@ -252,7 +298,10 @@ function LimitsPanel() {
 
   return (
     <section className="panel" aria-labelledby="limits-heading">
-      <h2 id="limits-heading">Import and search limits</h2>
+      <h2 id="limits-heading">
+        <Gauge size={18} aria-hidden="true" />
+        Import and search limits
+      </h2>
       <form
         className="limits"
         onSubmit={(event) => {
@@ -280,9 +329,13 @@ function StoragePanel({ status }: { status: EngineStatus | null }) {
   const storage = status?.storage;
   return (
     <section className="panel" aria-labelledby="storage-heading">
-      <h2 id="storage-heading">Storage</h2>
+      <h2 id="storage-heading">
+        <HardDrive size={18} aria-hidden="true" />
+        Storage
+      </h2>
       {storage ? (
         <>
+          <StorageMeter storage={storage} />
           <dl className="facts">
             <dt>Search database</dt>
             <dd>{formatBytes(storage.db_bytes)}</dd>
@@ -319,6 +372,17 @@ function StoragePanel({ status }: { status: EngineStatus | null }) {
   );
 }
 
+function StorageMeter({ storage }: { storage: EngineStatus["storage"] }) {
+  const total = storage.db_bytes + storage.vector_bytes + storage.media_bytes + storage.model_bytes;
+  return (
+    <p className="storage-meter">
+      <span>
+        <strong>{formatBytes(total)}</strong> <span className="muted">used on this device</span>
+      </span>
+    </p>
+  );
+}
+
 function IndexPanel({ onChanged }: { onChanged: () => void }) {
   const [report, setReport] = useState<ConsistencyReport | null>(null);
   const [busy, setBusy] = useState<"verify" | "rebuild" | "clear" | null>(null);
@@ -349,7 +413,10 @@ function IndexPanel({ onChanged }: { onChanged: () => void }) {
 
   return (
     <section className="panel" aria-labelledby="index-heading">
-      <h2 id="index-heading">Index maintenance</h2>
+      <h2 id="index-heading">
+        <Wrench size={18} aria-hidden="true" />
+        Index maintenance
+      </h2>
       <div className="row-actions">
         <button type="button" onClick={() => void run("verify")} disabled={busy !== null}>
           {busy === "verify" ? "Checking…" : "Check index"}
@@ -426,7 +493,10 @@ function ReportPanel() {
   };
   return (
     <section className="panel" aria-labelledby="report-heading">
-      <h2 id="report-heading">Report a problem</h2>
+      <h2 id="report-heading">
+        <Bug size={18} aria-hidden="true" />
+        Report a problem
+      </h2>
       <p>
         A problem report lists the app version, your system, counts of items by state, error codes,
         and recent warnings. It never contains your captured text, searches, file names, app names,

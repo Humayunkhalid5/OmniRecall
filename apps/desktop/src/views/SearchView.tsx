@@ -1,9 +1,11 @@
+import { ArrowRight, Lock, Search, Sparkles, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { engine, EngineCallError } from "../api/engine";
 import type { SearchFilters } from "../api/engine";
 import type { SearchResponse } from "../api/types";
 import { Highlighted } from "../components/Highlighted";
 import { Notice } from "../components/Notice";
+import { SourceTile } from "../components/SourceTile";
 import { formatClock, formatLocalTime, sourceLabels } from "../lib/format";
 
 interface Props {
@@ -12,6 +14,8 @@ interface Props {
   hasItems: boolean;
   modelInstalled: boolean;
   refreshKey: number;
+  /** Changes when the user asks to focus the search box (/ or Ctrl/Cmd+K). */
+  focusKey?: number;
   onGoToLibrary: () => void;
   onGoToSettings: () => void;
 }
@@ -37,12 +41,15 @@ const SOURCE_FILTERS: { value: string; label: string; filters: SearchFilters }[]
   { value: "screenshot", label: "Screenshots", filters: { source_types: ["screenshot"] } },
 ];
 
+const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+
 export function SearchView({
   selectedId,
   onSelect,
   hasItems,
   modelInstalled,
   refreshKey,
+  focusKey = 0,
   onGoToLibrary,
   onGoToSettings,
 }: Props) {
@@ -54,17 +61,23 @@ export function SearchView({
   const [showWeak, setShowWeak] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastQuery = useRef("");
+  // Only the newest request may update the view: a slow answer to an older
+  // query or source filter must not replace a newer one.
+  const latest = useRef(0);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+    if (focusKey) inputRef.current?.select();
+  }, [focusKey]);
 
   const run = async (text: string) => {
     const trimmed = text.trim();
     lastQuery.current = trimmed;
+    const request = ++latest.current;
     if (!trimmed) {
       setResponse(null);
       setError(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -72,15 +85,15 @@ export function SearchView({
     try {
       const filters = SOURCE_FILTERS.find((f) => f.value === source)?.filters ?? {};
       const result = await engine.search(trimmed, filters);
-      if (lastQuery.current === trimmed) {
-        setResponse(result);
-        setShowWeak(false);
-      }
+      if (request !== latest.current) return;
+      setResponse(result);
+      setShowWeak(false);
     } catch (e) {
+      if (request !== latest.current) return;
       setError((e as EngineCallError).message);
       setResponse(null);
     } finally {
-      setLoading(false);
+      if (request === latest.current) setLoading(false);
     }
   };
 
@@ -98,7 +111,16 @@ export function SearchView({
   const hidden = results.length - visible.length;
 
   return (
-    <section className="search" aria-label="Search">
+    <section className="search view" aria-label="Search">
+      <div className="page-head">
+        <p className="eyebrow">Your memory, searchable</p>
+        <h2 className="page-title">
+          Find anything you have <span className="gradient-text">seen</span>.
+        </h2>
+        <p className="page-sub">
+          Describe it in your own words. Results come from your device only.
+        </p>
+      </div>
       <form
         className="search-form"
         role="search"
@@ -107,6 +129,7 @@ export function SearchView({
           void run(query);
         }}
       >
+        <Search size={20} aria-hidden="true" />
         <label htmlFor="query" className="sr-only">
           Search your history
         </label>
@@ -119,25 +142,33 @@ export function SearchView({
           maxLength={1000}
           onChange={(event) => setQuery(event.target.value)}
           autoComplete="off"
+          spellCheck={false}
         />
-        <label htmlFor="source-filter" className="sr-only">
-          Source
-        </label>
-        <select
-          id="source-filter"
-          value={source}
-          onChange={(event) => setSource(event.target.value)}
-        >
-          {SOURCE_FILTERS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="primary" disabled={loading}>
+        {/* Never disabled: a new search while one is running replaces it. */}
+        <button type="submit" className="primary" aria-busy={loading}>
+          {loading ? <span className="spinner" aria-hidden="true" /> : null}
           {loading ? "Searching…" : "Search"}
         </button>
       </form>
+      <div className="search-hint">
+        <div className="chips" role="group" aria-label="Source">
+          {SOURCE_FILTERS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className="chip"
+              aria-pressed={source === option.value}
+              onClick={() => setSource(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="muted small" aria-hidden="true">
+          <span className="kbd">/</span> or <span className="kbd">{isMac ? "⌘" : "Ctrl"}</span>+
+          <span className="kbd">K</span> to search from anywhere
+        </p>
+      </div>
 
       {!modelInstalled && (
         <Notice
@@ -162,16 +193,36 @@ export function SearchView({
 
       {!response && !error && !hasItems && (
         <div className="empty">
+          <span className="tile lg" aria-hidden="true">
+            <Upload size={26} strokeWidth={2.2} />
+          </span>
           <h2>Nothing indexed yet</h2>
-          <p>Import documents or paste text, then search it by meaning.</p>
+          <p className="muted">Import documents or paste text, then search it by meaning.</p>
           <button type="button" className="primary" onClick={onGoToLibrary}>
-            Import something
+            Import something <ArrowRight size={16} aria-hidden="true" />
           </button>
         </div>
       )}
       {!response && !error && hasItems && !loading && (
         <div className="empty">
+          <span className="tile lg" aria-hidden="true">
+            <Sparkles size={26} strokeWidth={2.2} />
+          </span>
           <p className="muted">Search everything you have imported. Results stay on this device.</p>
+          <ul className="tips">
+            <li>
+              <Sparkles size={14} aria-hidden="true" />
+              Describe the idea, not the exact words: “budget we agreed on in March”.
+            </li>
+            <li>
+              <Search size={14} aria-hidden="true" />
+              Pick a source above to search only audio notes, screenshots, or files.
+            </li>
+            <li>
+              <Lock size={14} aria-hidden="true" />
+              Searches never leave this computer and are not logged.
+            </li>
+          </ul>
         </div>
       )}
 
@@ -190,6 +241,9 @@ export function SearchView({
           )}
           {response.count === 0 && (
             <div className="empty">
+              <span className="tile lg" aria-hidden="true">
+                <Search size={26} strokeWidth={2.2} />
+              </span>
               <p>
                 Try fewer or different words{source !== "all" ? ", or search all sources" : ""}.
               </p>
@@ -204,25 +258,36 @@ export function SearchView({
                   onClick={() => onSelect(result.item_id)}
                   aria-describedby={`why-${result.chunk_id}`}
                 >
-                  <span className="result-head">
-                    <span className="result-title">
-                      {result.source_label || sourceLabels[result.source_type]}
+                  <SourceTile
+                    kind={typeof result.start_ms === "number" ? "audio" : result.source_type}
+                  />
+                  <span className="result-body">
+                    <span className="result-head">
+                      <span className="result-title">
+                        {result.source_label || sourceLabels[result.source_type]}
+                      </span>
+                      <span className={`badge rel-${result.relevance}`}>
+                        {relevanceText[result.relevance]}
+                      </span>
                     </span>
-                    <span className={`badge rel-${result.relevance}`}>
-                      {relevanceText[result.relevance]}
+                    <span className="snippet">
+                      <Highlighted text={result.snippet} ranges={result.highlights} />
                     </span>
-                  </span>
-                  <span className="snippet">
-                    <Highlighted text={result.snippet} ranges={result.highlights} />
-                  </span>
-                  <span className="result-foot" id={`why-${result.chunk_id}`}>
-                    <span>{sourceLabels[result.source_type]}</span>
-                    <time dateTime={result.captured_at}>{formatLocalTime(result.captured_at)}</time>
-                    {typeof result.start_ms === "number" && (
-                      <span>at {formatClock(result.start_ms)} in the recording</span>
-                    )}
-                    <span>matched by {matchedText[result.matched_by]}</span>
-                    {result.more_matches > 0 && <span>+{result.more_matches} more passages</span>}
+                    <span className="result-foot" id={`why-${result.chunk_id}`}>
+                      <span>
+                        {typeof result.start_ms === "number"
+                          ? sourceLabels.audio
+                          : sourceLabels[result.source_type]}
+                      </span>
+                      <time dateTime={result.captured_at}>
+                        {formatLocalTime(result.captured_at)}
+                      </time>
+                      {typeof result.start_ms === "number" && (
+                        <span>at {formatClock(result.start_ms)} in the recording</span>
+                      )}
+                      <span>matched by {matchedText[result.matched_by]}</span>
+                      {result.more_matches > 0 && <span>+{result.more_matches} more passages</span>}
+                    </span>
                   </span>
                 </button>
               </li>

@@ -1,3 +1,4 @@
+import { Pause, Play, Power } from "lucide-react";
 import type { CaptureState } from "../api/types";
 
 interface Props {
@@ -13,7 +14,7 @@ export function CaptureIndicator({ capture, onToggle, onOpenSettings }: Props) {
   if (!enabled) {
     return (
       <button type="button" className="capture-chip capture-off" onClick={onOpenSettings}>
-        <span className="dot dot-off" aria-hidden="true" />
+        <Power size={15} aria-hidden="true" />
         Capture off
       </button>
     );
@@ -22,11 +23,15 @@ export function CaptureIndicator({ capture, onToggle, onOpenSettings }: Props) {
   const sources = Object.entries(capture.sources)
     .filter(([, s]) => s.active)
     .map(([name]) => (name === "clipboard" ? "clipboard" : "screenshots"));
+  const label = sources.length ? `Capturing ${sources.join(" and ")}` : "Capturing";
   return (
     <div className={`capture-chip ${active ? "capture-on" : "capture-paused"}`} role="status">
-      <span className={`dot ${active ? "dot-ok" : "dot-busy"}`} aria-hidden="true" />
-      <span>{active ? `Capturing ${sources.join(" and ")}` : "Capture paused"}</span>
+      <span className="capture-line">
+        <span className={`dot ${active ? "dot-live" : "dot-busy"}`} aria-hidden="true" />
+        <span>{active ? label : "Capture paused"}</span>
+      </span>
       <button type="button" className={active ? "" : "primary"} onClick={onToggle}>
+        {active ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
         {active ? "Pause" : "Resume"}
       </button>
     </div>

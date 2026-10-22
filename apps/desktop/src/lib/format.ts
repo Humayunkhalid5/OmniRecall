@@ -11,12 +11,19 @@ export function formatBytes(bytes: number): string {
 export function formatLocalTime(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown time";
-  const sameDay = date.toDateString() === now.toDateString();
-  const options: Intl.DateTimeFormatOptions = sameDay
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const day =
+    date.toDateString() === now.toDateString()
+      ? "Today"
+      : date.toDateString() === yesterday.toDateString()
+        ? "Yesterday"
+        : null;
+  const options: Intl.DateTimeFormatOptions = day
     ? { hour: "numeric", minute: "2-digit" }
     : { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
   const text = new Intl.DateTimeFormat(undefined, options).format(date);
-  return sameDay ? `Today, ${text}` : text;
+  return day ? `${day}, ${text}` : text;
 }
 
 export const sourceLabels: Record<string, string> = {

@@ -44,7 +44,11 @@ PyAV was rejected because its wheels bundle FFmpeg with GPL x264 and x265 (D-031
 
 ## Frontend packages (runtime)
 
-react / react-dom 19.3.1 (MIT), @tauri-apps/api and plugins (MIT OR Apache-2.0). Exact versions in `apps/desktop/package-lock.json`.
+react / react-dom 19.3.1 (MIT), @tauri-apps/api and plugins (MIT OR Apache-2.0), lucide-react 1.52.0 (ISC, icons). Exact versions in `apps/desktop/package-lock.json`.
+
+## Fonts (bundled in the desktop app)
+
+Unbounded and Outfit, variable weights, from `@fontsource-variable/unbounded` 5.3.0 and `@fontsource-variable/outfit` 5.3.0: SIL Open Font License 1.1, which allows bundling and redistribution with the license text (in each package's `LICENSE`). The fonts are compiled into the app's assets; nothing is downloaded at run time (D-044).
 
 ## Fonts used for test fixtures only
 

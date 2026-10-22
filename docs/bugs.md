@@ -87,6 +87,48 @@ Use this template when a real bug is found:
 - [ ] Resource and search latency results are measured on documented hardware.
 - [x] Clean install, upgrade, and uninstall behavior are tested.
 
+### OR-035 — Search snippets could end in the middle of a word
+- **Type:** BUG
+- **Priority:** P3
+- **Status:** CLOSED
+- **Environment:** engine 0.1.0, any long passage.
+- **Steps to reproduce:** search for a word in the middle of a long passage.
+- **Expected:** the snippet ends on a word boundary, followed by "…".
+- **Actual:** the 280-character window was cut wherever it ended ("the invoice n…").
+- **Fix:** `make_snippet` ends at the last space in the window when that loses fewer than 30 characters. `test_snippet_ends_on_a_word_boundary`.
+
+### OR-034 — Highlights were shifted in text with characters whose lowercase is longer
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** engine 0.1.0; any passage containing, for example, "İ" (Turkish dotted capital I).
+- **Steps to reproduce:** index "İstanbul trip notes", search for "trip".
+- **Expected:** "trip" is highlighted.
+- **Actual:** "rip " was highlighted: matches were found on a lowercased copy, and `"İ".lower()` is two characters, so every offset after it was off by one.
+- **Fix:** match case-insensitively on the original text (`re.IGNORECASE`). `test_highlights_stay_aligned_when_lowercasing_changes_length` fails without it.
+
+### OR-033 — Highlights were shifted after an emoji in the desktop app
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** desktop 0.1.0, any snippet with an emoji or other character outside the Basic Multilingual Plane before a match.
+- **Steps to reproduce:** search for "deploy" in a passage "🚀 deploy failed".
+- **Expected:** "deploy" is highlighted.
+- **Actual:** " deplo" was highlighted. The engine sends offsets in Unicode code points (Python indices); the UI sliced UTF-16 strings, where each such character counts twice.
+- **Fix:** `Highlighted` splits the text into code points before slicing, and sorts, clamps, and merges ranges so a bad range cannot repeat or drop text. Tests in `polish.test.tsx`.
+
+### OR-032 — A slow search could replace a newer one, and Enter did nothing while a search ran
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** desktop 0.1.0.
+- **Steps to reproduce:**
+  1. Search for a phrase, then switch the source filter before the first search returns.
+  2. Or: press Enter on a new query while the previous search is still running.
+- **Expected:** the newest search's results are shown; a new query can always be submitted.
+- **Actual:** (1) the stale check compared only the query text, so the slower all-sources answer could overwrite the filtered one. (2) The Search button was disabled while loading, which also blocks submitting the form with Enter.
+- **Fix:** every search gets a sequence number and only the newest may update the view or the loading state; the button is no longer disabled (it shows a spinner). Both tests in `polish.test.tsx` fail without the fix.
+
 ### OR-031 — Importing a large folder slowed to about 8 items per second
 - **Type:** BUG
 - **Priority:** P1

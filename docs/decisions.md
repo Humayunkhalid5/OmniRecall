@@ -372,3 +372,9 @@
 - **Docs updated:** `measurements.md`; `bugs.md` OR-031.
 - **Replaces:** none.
 
+### D-044 — Desktop visual system follows the launch look
+- **Date:** 2026-10-22
+- **Decision:** the desktop UI uses one visual system, defined as CSS tokens in `apps/desktop/src/styles.css`: dark ink (`#0b0709`) with ember (`#ff6a3d`), rose (`#ff2e7e`), amber, and mint accents, the palette of the launch video, and a warm light variant chosen by `prefers-color-scheme`. Headings use Unbounded and body text Outfit, both bundled from the pinned `@fontsource-variable` packages (OFL-1.1), so the app never fetches a font; icons come from `lucide-react` (ISC). Navigation is a left sidebar that also holds the capture status and its Pause button (rules §5.1). The search source filter is a row of toggle chips instead of a select. `/` or Ctrl/Cmd+K focuses search and Escape closes the item panel. Every text colour meets WCAG AA (4.5:1) on the surfaces it is used on, in both themes.
+- **Reason:** the first UI was a functional default. A consistent, recognisable look that matches the launch material makes the beta easier to read and trust, and bundling the fonts keeps the no-network promise (rules §1.5).
+- **Docs updated:** `design.md` §3; `licenses.md`; `bugs.md` OR-032 to OR-035; `CHANGELOG.md`.
+- **Replaces:** none.

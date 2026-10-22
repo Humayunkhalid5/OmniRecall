@@ -13,6 +13,8 @@ The first packaged version of OmniRecall: a local-first app that indexes what yo
 - Installers for Windows (NSIS), macOS (Apple Silicon .dmg), and Linux (.deb, .rpm). On Windows, OCR is a single static Tesseract with only permissively licensed libraries and no network library.
 - Settings → Report a problem: a report with versions, counts, and error codes, and none of your content, that you read and then copy or save; nothing is sent by the app.
 - Each release comes with checksums, a software bill of materials, and build provenance attestations.
+- A redesigned desktop app: a sidebar with the capture status always in view, a large search box with source chips, result cards with source icons, a library drop area with progress cards, and dark and light themes in the launch colours. Fonts are bundled, so the app still makes no network request (D-044).
+- Keyboard: `/` or Ctrl/Cmd+K jumps to search from anywhere; Escape closes the item panel.
 
 ### Known limitations
 - The data folder is not encrypted by OmniRecall; use OS disk encryption.

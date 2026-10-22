@@ -1,3 +1,4 @@
+import { Archive, Download, EyeOff, Radio } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { engine, EngineCallError } from "../api/engine";
 import type {
@@ -67,6 +68,7 @@ function ScreenshotSection({ capture, setSource }: ScreenshotProps) {
     String(Math.round((capture.screenshot?.pause_on_idle_s ?? 300) / 60)),
   );
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const loadStatus = useCallback(
     () =>
@@ -90,6 +92,8 @@ function ScreenshotSection({ capture, setSource }: ScreenshotProps) {
   const counts = countSummary(capture.session?.screenshot ?? {}, screenshotLabels);
 
   const saveTiming = async () => {
+    setSaving(true);
+    setMessage(null);
     try {
       await engine.updateSettings({
         screenshot_interval_s: Number(interval),
@@ -98,6 +102,8 @@ function ScreenshotSection({ capture, setSource }: ScreenshotProps) {
       setMessage({ tone: "success", text: "Saved." });
     } catch (e) {
       setMessage({ tone: "error", text: (e as EngineCallError).message });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -210,7 +216,9 @@ function ScreenshotSection({ capture, setSource }: ScreenshotProps) {
               />
             </div>
             <div className="row-actions">
-              <button type="submit">Save timing</button>
+              <button type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save timing"}
+              </button>
             </div>
           </form>
         </>
@@ -290,7 +298,10 @@ export function CapturePanel({ controls }: CaptureProps) {
 
   return (
     <section className="panel" aria-labelledby="capture-heading">
-      <h2 id="capture-heading">Capture</h2>
+      <h2 id="capture-heading">
+        <Radio size={18} aria-hidden="true" />
+        Capture
+      </h2>
       {error && <Notice tone="error">{error}</Notice>}
       {message && <Notice tone="error">{message}</Notice>}
       <div className="switch-row">
@@ -409,7 +420,10 @@ export function ExclusionsPanel() {
 
   return (
     <section className="panel" aria-labelledby="exclusions-heading">
-      <h2 id="exclusions-heading">Exclusions</h2>
+      <h2 id="exclusions-heading">
+        <EyeOff size={18} aria-hidden="true" />
+        Exclusions
+      </h2>
       <p className="muted small">
         Checked before anything is saved. <strong>App</strong>: while that app is in front, copies
         are dropped and no screenshot is taken; if the app cannot be identified (for example on some
@@ -497,6 +511,7 @@ export function DataPanel({ refreshKey }: { refreshKey: number }) {
   const [textOnly, setTextOnly] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [exported, setExported] = useState<ExportResult | null>(null);
 
   const load = useCallback(
@@ -518,6 +533,8 @@ export function DataPanel({ refreshKey }: { refreshKey: number }) {
   }, [load, refreshKey]);
 
   const save = async () => {
+    setSaving(true);
+    setMessage(null);
     try {
       await engine.updateSettings({
         screenshot_retention_days: Number(days),
@@ -528,6 +545,8 @@ export function DataPanel({ refreshKey }: { refreshKey: number }) {
       setMessage({ tone: "success", text: "Saved. Older media beyond these limits was removed." });
     } catch (e) {
       setMessage({ tone: "error", text: (e as EngineCallError).message });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -547,13 +566,17 @@ export function DataPanel({ refreshKey }: { refreshKey: number }) {
 
   return (
     <section className="panel" aria-labelledby="data-heading">
-      <h2 id="data-heading">Your data</h2>
+      <h2 id="data-heading">
+        <Archive size={18} aria-hidden="true" />
+        Your data
+      </h2>
       <h3>Export</h3>
       <p className="muted small">
         Saves every item, its extracted text, and saved media to one zip file, with a manifest of
         checksums. Search vectors are not included; they are rebuilt on restore.
       </p>
       <button type="button" onClick={() => void runExport()} disabled={exporting}>
+        <Download size={15} aria-hidden="true" />
         {exporting ? "Exporting…" : "Export to zip…"}
       </button>
       {exported?.path && (
@@ -569,9 +592,18 @@ export function DataPanel({ refreshKey }: { refreshKey: number }) {
         image is removed. Text items and imported files are kept until you delete them.
       </p>
       {usage && (
-        <p className="small">
-          Saved media: {formatBytes(usage.media_bytes)} of {formatBytes(usage.media_cap_bytes)}
-        </p>
+        <div className="storage-meter">
+          <p className="small">
+            Saved media: {formatBytes(usage.media_bytes)} of {formatBytes(usage.media_cap_bytes)}
+          </p>
+          <span className="meter" aria-hidden="true">
+            <span
+              style={{
+                width: `${usage.media_cap_bytes > 0 ? Math.min(100, (100 * usage.media_bytes) / usage.media_cap_bytes) : 0}%`,
+              }}
+            />
+          </span>
+        </div>
       )}
       <form
         className="limits"
@@ -624,7 +656,9 @@ export function DataPanel({ refreshKey }: { refreshKey: number }) {
           />
         </div>
         <div className="row-actions">
-          <button type="submit">Save retention</button>
+          <button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save retention"}
+          </button>
         </div>
       </form>
       {message && <Notice tone={message.tone}>{message.text}</Notice>}

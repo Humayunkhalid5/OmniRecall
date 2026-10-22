@@ -33,3 +33,19 @@ def test_snippet_windows_long_text_around_first_match():
     assert shown.startswith("…") and shown.endswith("…")
     assert len(shown) <= 282
     assert [shown[a:b] for a, b in highlights] == ["invoice"]
+
+
+def test_highlights_stay_aligned_when_lowercasing_changes_length():
+    # "İ".lower() is two characters; matching on a lowercased copy shifted spans.
+    assert spans("İstanbul trip notes: the trip budget", "trip") == ["trip", "trip"]
+
+
+def test_highlights_are_case_insensitive_on_the_original_text():
+    assert spans("ERROR E0382: Borrow of MOVED value", "moved borrow") == ["Borrow", "MOVED"]
+
+
+def test_snippet_ends_on_a_word_boundary():
+    text = ("filler " * 200) + "the invoice number is INV-2291 " + ("wordy tail " * 200)
+    shown, _ = make_snippet(text, "invoice")
+    assert shown.endswith("…")
+    assert shown[:-1].split(" ")[-1] in {"wordy", "tail"}

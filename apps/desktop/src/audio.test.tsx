@@ -197,7 +197,12 @@ test("search can be limited to audio notes and shows where a passage is", async 
     });
   });
   render(<App />);
-  await userEvent.selectOptions(await screen.findByLabelText("Source"), "Audio notes");
+  const sources = await screen.findByRole("group", { name: "Source" });
+  await userEvent.click(within(sources).getByRole("button", { name: "Audio notes" }));
+  expect(within(sources).getByRole("button", { name: "Audio notes" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await userEvent.type(screen.getByLabelText("Search your history"), "plumber{Enter}");
   expect(await screen.findByText("at 1:02 in the recording")).toBeInTheDocument();
   expect(searches.at(-1)).toEqual({ query: "plumber", filters: { formats: ["audio"] } });

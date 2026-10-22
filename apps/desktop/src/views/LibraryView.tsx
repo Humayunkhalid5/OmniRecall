@@ -1,15 +1,24 @@
+import { ClipboardPaste, FileUp, FolderUp, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { engine, EngineCallError, type EngineNotification } from "../api/engine";
 import type { FormatInfo, ImportSummary, Item, ItemStatus } from "../api/types";
 import { Notice } from "../components/Notice";
+import { SourceTile, sourceKind } from "../components/SourceTile";
 import { useEngineEvents } from "../hooks/useEngine";
-import { describeError, formatLocalTime, sourceLabels, statusLabels } from "../lib/format";
+import {
+  describeError,
+  formatClock,
+  formatLocalTime,
+  sourceLabels,
+  statusLabels,
+} from "../lib/format";
 
 interface Props {
   selectedId: string | null;
   onSelect: (itemId: string) => void;
   refreshKey: number;
   lastImport: ImportSummary | null;
+  onDismissImport?: () => void;
   onImported: (summary: ImportSummary) => void;
   onChanged: () => void;
 }
@@ -27,6 +36,9 @@ const PAGE = 100;
 interface Progress {
   stage: string;
   percent?: number;
+  /** Seconds of a recording transcribed so far, and its length when known. */
+  doneS?: number;
+  totalS?: number;
 }
 
 const stageLabels: Record<string, string> = {
@@ -54,6 +66,7 @@ export function LibraryView({
   onSelect,
   refreshKey,
   lastImport,
+  onDismissImport,
   onImported,
   onChanged,
 }: Props) {
@@ -73,9 +86,15 @@ export function LibraryView({
     const p = progress[itemId];
     if (!p) return null;
     const label = stageLabels[p.stage] ?? p.stage;
+    // Without a known length, a recording's progress is the time transcribed so far.
+    const elapsed =
+      p.percent === undefined && p.doneS !== undefined
+        ? ` ${formatClock(p.doneS * 1000)}${p.totalS ? ` of ${formatClock(p.totalS * 1000)}` : ""}`
+        : "";
     return (
       <span className="status-reason">
         {label}
+        {elapsed}
         {p.percent !== undefined && (
           <>
             {" "}
@@ -126,12 +145,14 @@ export function LibraryView({
       const id = note.params.item_id as string | undefined;
       if (!id) return;
       if (note.method === "items.progress") {
-        const percent = note.params.percent;
+        const { percent, done_s: doneS, total_s: totalS } = note.params;
         setProgress((p) => ({
           ...p,
           [id]: {
             stage: String(note.params.stage),
             percent: typeof percent === "number" ? percent : undefined,
+            doneS: typeof doneS === "number" ? doneS : undefined,
+            totalS: typeof totalS === "number" ? totalS : undefined,
           },
         }));
       } else {
@@ -174,32 +195,58 @@ export function LibraryView({
   const needsAttention = (counts.failed ?? 0) + (counts.skipped ?? 0);
 
   return (
-    <section className="library" aria-label="Library">
-      <div className="toolbar">
-        <button
-          type="button"
-          className="primary"
-          onClick={() => void runImport("files")}
-          disabled={busy !== null}
-        >
-          {busy === "files" ? "Choosing…" : "Import files"}
-        </button>
-        <button type="button" onClick={() => void runImport("folder")} disabled={busy !== null}>
-          {busy === "folder" ? "Choosing…" : "Import folder"}
-        </button>
-        <button type="button" onClick={() => setPasteOpen(true)} disabled={busy !== null}>
-          Paste text
-        </button>
+    <section className="library view" aria-label="Library">
+      <div className="page-head">
+        <p className="eyebrow">Library</p>
+        <h2 className="page-title">Everything OmniRecall knows</h2>
+        <p className="page-sub">
+          Import documents, audio notes, and images. Each one is read and indexed on this device.
+        </p>
       </div>
-      <p className="muted drop-hint">You can also drop files or folders onto this window.</p>
+      <div className="dropzone">
+        <div className="dropzone-copy">
+          <span className="tile lg" aria-hidden="true">
+            <FileUp size={26} strokeWidth={2.2} />
+          </span>
+          <div>
+            <strong>Add to your library</strong>
+            <p className="muted small drop-hint">
+              You can also drop files or folders onto this window.
+            </p>
+          </div>
+        </div>
+        <div className="toolbar">
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void runImport("files")}
+            disabled={busy !== null}
+          >
+            <FileUp size={16} aria-hidden="true" />
+            {busy === "files" ? "Choosing…" : "Import files"}
+          </button>
+          <button type="button" onClick={() => void runImport("folder")} disabled={busy !== null}>
+            <FolderUp size={16} aria-hidden="true" />
+            {busy === "folder" ? "Choosing…" : "Import folder"}
+          </button>
+          <button type="button" onClick={() => setPasteOpen(true)} disabled={busy !== null}>
+            <ClipboardPaste size={16} aria-hidden="true" />
+            Paste text
+          </button>
+        </div>
+      </div>
 
       {lastImport && (
-        <Notice tone={lastImport.rejected.length ? "warning" : "success"} title="Import">
+        <Notice
+          tone={lastImport.rejected.length ? "warning" : "success"}
+          title="Import"
+          onDismiss={onDismissImport}
+        >
           {summarizeImport(lastImport)}
           {lastImport.rejected.length > 0 && (
             <ul className="rejected">
-              {lastImport.rejected.slice(0, 10).map((r) => (
-                <li key={r.name}>
+              {lastImport.rejected.slice(0, 10).map((r, index) => (
+                <li key={`${index}-${r.name}`}>
                   {r.name}: {describeError(r.code)}
                 </li>
               ))}
@@ -210,7 +257,11 @@ export function LibraryView({
           )}
         </Notice>
       )}
-      {error && <Notice tone="error">{error}</Notice>}
+      {error && (
+        <Notice tone="error" onDismiss={() => setError(null)}>
+          {error}
+        </Notice>
+      )}
 
       <dl className="counts" aria-label="Index progress">
         <div>
@@ -249,74 +300,88 @@ export function LibraryView({
 
       {items.length === 0 ? (
         <div className="empty">
+          <span className="tile lg" aria-hidden="true">
+            <FileUp size={26} strokeWidth={2.2} />
+          </span>
           <p>{filter === "all" ? "Nothing imported yet." : "No items in this view."}</p>
         </div>
       ) : (
-        <table className="items">
-          <thead>
-            <tr>
-              <th scope="col">Item</th>
-              <th scope="col">Source</th>
-              <th scope="col">Added</th>
-              <th scope="col">Status</th>
-              <th scope="col">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className={selectedId === item.id ? "selected" : undefined}>
-                <td>
-                  <button type="button" className="link" onClick={() => onSelect(item.id)}>
-                    {item.source_label || sourceLabels[item.source_type]}
-                  </button>
-                </td>
-                <td>{sourceOf(item)}</td>
-                <td>
-                  <time dateTime={item.captured_at}>{formatLocalTime(item.captured_at)}</time>
-                </td>
-                <td>
-                  <span className={`status status-${item.status}`}>
-                    {statusLabels[item.status]}
-                  </span>
-                  {item.status === "processing" && progressOf(item.id)}
-                  {item.status === "failed" && (
-                    <span className="status-reason">{describeError(item.error_code)}</span>
-                  )}
-                  {item.status === "skipped" && (
-                    <span className="status-reason">{describeError(item.skip_reason)}</span>
-                  )}
-                </td>
-                <td>
-                  <div className="row-actions">
-                    {item.status === "failed" && item.error_code !== "source_missing" && (
-                      <button
-                        type="button"
-                        onClick={() => void act(item, "retry")}
-                        disabled={busy === item.id}
-                      >
-                        Retry
-                      </button>
-                    )}
-                    {(item.status === "queued" || item.status === "processing") && (
-                      <button
-                        type="button"
-                        onClick={() => void act(item, "cancel")}
-                        disabled={busy === item.id}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </td>
+        <div className="table-wrap">
+          <table className="items">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Source</th>
+                <th scope="col">Added</th>
+                <th scope="col">Status</th>
+                <th scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id} className={selectedId === item.id ? "selected" : undefined}>
+                  <td>
+                    <span className="item-cell">
+                      <SourceTile
+                        kind={sourceKind(item.source_type, item.metadata.format)}
+                        size="sm"
+                      />
+                      <button type="button" className="link" onClick={() => onSelect(item.id)}>
+                        {item.source_label || sourceLabels[item.source_type]}
+                      </button>
+                    </span>
+                  </td>
+                  <td className="cell-muted">{sourceOf(item)}</td>
+                  <td className="cell-muted">
+                    <time dateTime={item.captured_at}>{formatLocalTime(item.captured_at)}</time>
+                  </td>
+                  <td>
+                    <span className={`status status-${item.status}`}>
+                      {statusLabels[item.status]}
+                    </span>
+                    {item.status === "processing" && progressOf(item.id)}
+                    {item.status === "failed" && (
+                      <span className="status-reason">{describeError(item.error_code)}</span>
+                    )}
+                    {item.status === "skipped" && (
+                      <span className="status-reason">{describeError(item.skip_reason)}</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      {item.status === "failed" && item.error_code !== "source_missing" && (
+                        <button
+                          type="button"
+                          onClick={() => void act(item, "retry")}
+                          disabled={busy === item.id}
+                        >
+                          <RotateCcw size={14} aria-hidden="true" />
+                          Retry
+                        </button>
+                      )}
+                      {(item.status === "queued" || item.status === "processing") && (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => void act(item, "cancel")}
+                          disabled={busy === item.id}
+                        >
+                          <X size={14} aria-hidden="true" />
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {items.length >= limit && (
-        <button type="button" onClick={() => setLimit((n) => n + PAGE)}>
+        <button type="button" className="show-more" onClick={() => setLimit((n) => n + PAGE)}>
           Show more
         </button>
       )}
