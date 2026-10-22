@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import threading
 import warnings
 from dataclasses import dataclass, field
@@ -27,6 +28,18 @@ MAX_IMAGE_PIXELS = 100_000_000
 MIN_OCR_WIDTH = 1600
 OCR_TIMEOUT_S = 120
 TESSERACT_ENV = "OMNIRECALL_TESSERACT_CMD"
+# Installers for Windows and macOS ship Tesseract in this folder next to the
+# engine executable, with its `tessdata`; Linux packages depend on the system one.
+BUNDLED_DIR = "tesseract"
+
+
+def bundled_tesseract() -> Path | None:
+    """The Tesseract shipped with a packaged engine, if there is one."""
+    if not getattr(sys, "frozen", False):
+        return None
+    name = "tesseract.exe" if sys.platform == "win32" else "tesseract"
+    candidate = Path(sys.executable).parent / BUNDLED_DIR / name
+    return candidate if candidate.is_file() else None
 # Pillow warns above this many pixels and refuses twice as many.
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
@@ -100,6 +113,12 @@ class TesseractOcr:
         configured = self._command or os.environ.get(TESSERACT_ENV)
         if configured:
             return configured if Path(configured).is_file() else None
+        bundled = bundled_tesseract()
+        if bundled is not None:
+            # Tesseract reads TESSDATA_PREFIX for its language data; the
+            # subprocess inherits it. Only the bundled copy is pointed there.
+            os.environ["TESSDATA_PREFIX"] = str(bundled.parent / "tessdata")
+            return str(bundled)
         return shutil.which("tesseract")
 
     def available(self) -> bool:

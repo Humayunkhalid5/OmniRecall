@@ -111,8 +111,9 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             paths::prepare_data_dir(&data_dir)?;
             let handle = app.handle().clone();
+            let resource_dir = app.path().resource_dir().ok();
             let supervisor = Supervisor::new(
-                paths::engine_launch(&data_dir),
+                paths::engine_launch(&data_dir, resource_dir.as_deref()),
                 RestartPolicy::default(),
                 Box::new(move |event| match event {
                     EngineEvent::State(state) => {
