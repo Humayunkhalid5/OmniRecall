@@ -86,6 +86,19 @@ Use this template when a real bug is found:
 - [ ] Resource and search latency results are measured on documented hardware.
 - [ ] Clean install, upgrade, and uninstall behavior are tested.
 
+### OR-025 — Network audit failed on CI runners with IPv6: an IPv6 check, not a connection
+- **Type:** BUG (test)
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** GitHub Actions `ubuntu-24.04` (IPv6 loopback available). The build sandbox has no IPv6, so the call failed there before reaching `bind` and the audit passed.
+- **Steps to reproduce:** run `tests/test_network_audit.py::test_engine_session_makes_no_network_calls` on a Linux host with IPv6.
+- **Expected:** the audit passes when the engine makes no network calls.
+- **Actual:** the trace held one call, `bind(AF_INET6, "::1", port 0) = 0`, and the audit failed.
+- **Root cause:** `lancedb` imports its REST namespace client, which imports `urllib3`. At import time urllib3 checks whether IPv6 works by binding a socket to `::1` port 0 and closing it. Nothing connects, sends, or listens; the engine still opens no port. (Traced with a Python audit hook: `lancedb/__init__` → `lance_namespace_urllib3_client` → `urllib3.util.connection._has_ipv6`.)
+- **Fix plan:** the audit allows only a `bind` to a loopback address on port 0, also traces `listen`, and fails on any `listen` call, so a probe can never become an open port. Every `connect`, `sendto`, and `sendmsg` on an IP socket still fails the audit.
+- **Regression test:** the audit itself, now green on the IPv6 runner.
+- **Resolution:** fixed in the test. No engine change was needed.
+
 ### OR-023 — ONNX Runtime sent telemetry to Microsoft and kept a device ID
 - **Type:** BUG (privacy)
 - **Priority:** P0

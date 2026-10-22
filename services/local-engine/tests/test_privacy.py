@@ -128,6 +128,8 @@ def test_duplicate_copy_is_not_stored_twice(engine):
         ("Tr0ub4dor&3xYz!", "sensitive"),
         ("   \n\t ", "empty"),
     ],
+    # Short IDs: the 100 KB text as an ID overflows Windows' environment limit.
+    ids=["too_large", "private_key", "aws_key", "card", "password", "empty"],
 )
 def test_filtered_copies_leave_no_trace(engine, text, outcome):
     enable(engine)

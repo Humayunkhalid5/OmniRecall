@@ -112,6 +112,17 @@ def _session(proc: subprocess.Popen[bytes], export_path: Path, with_model: bool)
     call("shutdown", {})
 
 
+def _loopback_probe(call: str) -> bool:
+    """urllib3 (imported by lancedb) checks for IPv6 at import time by binding
+    a socket to ::1 port 0 and closing it. That reaches no network and opens
+    no port (nothing listens), so it is the one IP syscall allowed (OR-025)."""
+    return (
+        " bind(" in call
+        and "htons(0)" in call
+        and re.search(r'"(::1|127\.0\.0\.1)"', call) is not None
+    )
+
+
 @pytest.mark.timeout(180)
 @pytest.mark.skipif(
     not sys.platform.startswith("linux") or shutil.which("strace") is None,
@@ -129,7 +140,7 @@ def test_engine_session_makes_no_network_calls(tmp_path):
             "-f",
             "-qq",
             "-e",
-            "trace=connect,bind,sendto,sendmsg,openat",
+            "trace=connect,bind,listen,sendto,sendmsg,openat",
             "-o",
             str(trace),
             *engine,
@@ -148,8 +159,12 @@ def test_engine_session_makes_no_network_calls(tmp_path):
         if proc.poll() is None:
             proc.kill()
     calls = trace.read_text().splitlines()
-    ip_calls = [c for c in calls if re.search(r"AF_INET6?|sin6?_port", c)]
+    ip_calls = [
+        c for c in calls if re.search(r"AF_INET6?|sin6?_port", c) and not _loopback_probe(c)
+    ]
     assert ip_calls == []
+    # Nothing listens, so the loopback probes above never become an open port.
+    assert [c for c in calls if re.search(r"\blisten\(", c)] == []
     # Nothing is written outside the data folder and the source tree (bytecode),
     # such as a library's device ID or cache (OR-023).
     allowed = (str(tmp_path), str(PACKAGE.parents[2]), "/dev/", "/proc/")
