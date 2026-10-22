@@ -48,23 +48,19 @@ def seed(tmp_path: Path, count: int = 120) -> list[str]:
 
 
 def damage_chunk_pages(path: Path, pages: int = 3) -> None:
-    """Overwrite a few leaf pages of the chunks table in the middle of the file."""
-    conn = sqlite3.connect(path)
-    try:
-        leaves = [
-            r[0]
-            for r in conn.execute(
-                "SELECT pageno FROM dbstat WHERE name = 'chunks' AND pagetype = 'leaf' "
-                "ORDER BY pageno"
-            )
-        ]
-    except sqlite3.OperationalError:  # no dbstat in this SQLite build
-        total = conn.execute("PRAGMA page_count").fetchone()[0]
-        leaves = list(range(total // 3, total // 3 + pages * 2))
-    finally:
-        conn.close()
-    middle = leaves[len(leaves) // 2 : len(leaves) // 2 + pages]
+    """Overwrite a few pages holding chunk text in the middle of the file.
+
+    Pages are found by the sentence the seeds repeat, which only chunk rows
+    hold (the keyword index stores single terms), so this works on SQLite
+    builds without the `dbstat` table, such as the one in Windows Python.
+    """
     data = bytearray(path.read_bytes())
+    marker = b"notes on the lighthouse restoration"
+    if marker not in data:
+        marker = b"tide pools and kelp at site"
+    leaves = [n for n in range(1, len(data) // PAGE) if marker in data[(n - 1) * PAGE : n * PAGE]]
+    assert len(leaves) > pages * 2, "not enough chunk pages to damage"
+    middle = leaves[len(leaves) // 2 : len(leaves) // 2 + pages]
     for page in middle:
         data[(page - 1) * PAGE : page * PAGE] = b"\xa5" * PAGE
     path.write_bytes(bytes(data))
