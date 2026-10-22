@@ -27,7 +27,7 @@
 | OR-017 | RISK / P0 | Deleted content can survive in LanceDB old table versions, SQLite free pages, and the SQLite WAL file | Privacy breach: "deleted" data is recoverable from disk | Implement physical deletion (`design.md` §7); regression test scans raw store files for a deleted marker string | OPEN |
 | OR-018 | RISK / P1 | Bundling Python, ONNX Runtime, and models makes installers large and engine start slow; every embedded native binary must be signed/notarized on macOS | Poor install experience; release blocked by signing | Measure installer size and cold start in Phase 0; make large models optional user-approved downloads; include sidecar binaries in the signing pipeline. Phase 0 measured: frozen engine 462 MB unpacked / 180 MB gzip, cold start ~150 ms (`measurements.md`) | OPEN |
 | OR-019 | RISK / P2 | The embedding model truncates inputs at about 256 tokens and handles non-English text poorly | Missed results for long chunks and non-English content | Verify chunk token length in the chunker; keep a non-English query set in the evaluation corpus; MVP claims English only | OPEN |
-| OR-020 | RISK / P2 | `pywhispercpp` publishes no macOS x86_64 wheel | Audio transcription unavailable on Intel Macs | Build whisper.cpp from source in the macOS x86_64 release job, or mark audio transcription unavailable on Intel Macs in the support matrix | OPEN |
+| OR-020 | RISK / P2 | `pywhispercpp` publishes no macOS x86_64 wheel | Audio transcription unavailable on Intel Macs | Build whisper.cpp from source in the macOS x86_64 release job, or mark audio transcription unavailable on Intel Macs in the support matrix. Phase 5: still open; the support matrix marks Intel Macs as not built yet | OPEN |
 
 ## Verified defects
 
@@ -85,6 +85,32 @@ Use this template when a real bug is found:
 - [ ] Model/dependency licenses and checksums are documented.
 - [ ] Resource and search latency results are measured on documented hardware.
 - [ ] Clean install, upgrade, and uninstall behavior are tested.
+
+### OR-027 — Engine crashed with a segmentation fault on exit after transcribing
+- **Type:** BUG
+- **Priority:** P1
+- **Status:** CLOSED
+- **Environment:** REF-CI-LINUX, Python 3.12, `pywhispercpp` 1.5.1.
+- **Steps to reproduce:** transcribe one recording, then shut the engine down.
+- **Expected:** the engine exits with code 0.
+- **Actual:** the process exited with signal 11 (exit code -11) after the shutdown reply.
+- **Root cause:** whisper.cpp's log output was redirected to a Python lambda. At interpreter shutdown the lambda was freed while the native library still held a pointer to it, and the model's destructor logged through that pointer.
+- **Fix plan:** route whisper.cpp logs to a module-level function that lives as long as the process, free the model in `Engine.close()` before the database closes, and reset the log callback after the model is freed.
+- **Regression test:** `tests/test_audio.py::test_process_exits_cleanly_after_a_transcription`, run with and without an explicit close. It fails with the lambda.
+- **Resolution:** fixed in `extraction/transcribe.py` and `app.py`.
+
+### OR-026 — Cancelling an item while it was being transcribed did not stop it
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** REF-CI-LINUX.
+- **Steps to reproduce:** import a long recording and press **Cancel** while it shows "Transcribing".
+- **Expected:** transcription stops within a second or two and the item shows "Processing was cancelled".
+- **Actual:** transcription ran to the end and the item was indexed.
+- **Root cause:** the worker checked only for engine shutdown between stages. A cancel marks the job `cancelled` in the database, and nothing running read it.
+- **Fix plan:** the stage check (`_check_live`) also stops on a cancelled job, and the transcriber's abort callback re-reads the job status at most every 0.5 s. The decoder child process is killed when the stream is abandoned.
+- **Regression test:** `tests/test_audio.py::test_cancel_stops_a_running_transcription`. It fails without the fix.
+- **Resolution:** fixed in `ingestion/pipeline.py`.
 
 ### OR-025 — Network audit failed on CI runners with IPv6: an IPv6 check, not a connection
 - **Type:** BUG (test)

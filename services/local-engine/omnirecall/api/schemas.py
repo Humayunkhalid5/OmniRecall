@@ -49,6 +49,7 @@ class SearchFiltersParams(Params):
     captured_before: str | None = Field(default=None, max_length=40)
     app: str | None = Field(default=None, max_length=200)
     path_prefix: str | None = Field(default=None, max_length=4096)
+    formats: list[str] = Field(default=[], max_length=20)
 
 
 class SearchParams(Params):

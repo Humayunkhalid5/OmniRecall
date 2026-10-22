@@ -1,0 +1,20 @@
+[package]
+name = "omnirecall-audio-decode"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Decodes a local audio file to 16 kHz mono float PCM for OmniRecall's transcription"
+publish = false
+
+[dependencies]
+symphonia = { version = "=0.6.1", default-features = false, features = [
+    "aac", "alac", "flac", "mp3", "pcm", "vorbis", "adpcm",
+    "isomp4", "ogg", "wav", "mkv", "aiff", "caf", "all-meta",
+] }
+rubato = "=5.0.1"
+serde_json = "=1.0.145"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

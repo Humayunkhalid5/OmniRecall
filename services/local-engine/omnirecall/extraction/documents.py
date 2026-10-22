@@ -35,7 +35,7 @@ class Format:
     extensions: tuple[str, ...]
 
 
-# The supported list shown in the UI. Audio formats join in Phase 5.
+# The supported list shown in the UI.
 DOCUMENT_FORMATS: tuple[Format, ...] = (
     Format("text", "text/plain", "Plain text", (".txt", ".text", ".log")),
     Format("markdown", "text/markdown", "Markdown", (".md", ".markdown")),
@@ -61,7 +61,22 @@ IMAGE_FORMATS: tuple[Format, ...] = (
     Format("image", "image/gif", "GIF image (first frame)", (".gif",)),
 )
 
-_BY_EXTENSION = {ext: fmt for fmt in DOCUMENT_FORMATS + IMAGE_FORMATS for ext in fmt.extensions}
+# Audio is decoded by the bundled helper and transcribed locally (D-031). Opus is
+# not supported by the decoder, so .opus and WebM recordings are refused up front.
+AUDIO_FORMATS: tuple[Format, ...] = (
+    Format("audio", "audio/wav", "WAV audio", (".wav", ".wave")),
+    Format("audio", "audio/mpeg", "MP3 audio", (".mp3",)),
+    Format("audio", "audio/mp4", "M4A audio (AAC or Apple Lossless)", (".m4a",)),
+    Format("audio", "audio/aac", "AAC audio", (".aac",)),
+    Format("audio", "audio/flac", "FLAC audio", (".flac",)),
+    Format("audio", "audio/ogg", "Ogg Vorbis audio", (".ogg", ".oga")),
+    Format("audio", "audio/aiff", "AIFF audio", (".aif", ".aiff")),
+    Format("audio", "audio/x-caf", "Core Audio (.caf)", (".caf",)),
+)
+
+_BY_EXTENSION = {
+    ext: fmt for fmt in DOCUMENT_FORMATS + IMAGE_FORMATS + AUDIO_FORMATS for ext in fmt.extensions
+}
 
 
 def format_for(path: Path) -> Format:

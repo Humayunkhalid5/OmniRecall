@@ -142,5 +142,9 @@ PERMANENT_ERRORS = frozenset(
         "binary_content",
         "unsupported_source",
         "ocr_unavailable",
+        "transcription_model_missing",
+        "audio_decoder_unavailable",
+        "unsupported_codec",
+        "cancelled",
     }
 )

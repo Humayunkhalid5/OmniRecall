@@ -1,0 +1,77 @@
+# Phase 5 — Audio notes
+
+## Task brief
+
+- **Phase:** Phase 5.
+- **Exit gate:** common audio fixtures transcribe offline and produce searchable chunks.
+- **Acceptance criteria:**
+  - Audio import through the dialog, drag-and-drop, and folders, for the common formats (design §3). Unsupported and damaged files fail with clear codes.
+  - Local transcription with whisper.cpp `base` (D-012), installed by the user. No download by model name, and no transcript text in logs.
+  - Timestamps kept when the engine provides them (design §3), shown in search results and item details.
+  - A recording length limit (design §11: 2 hours), progress while transcribing, and cancellation.
+  - Long recordings processed with bounded memory.
+- **Files:**
+  - New decoder helper: `services/audio-decoder` (Rust).
+  - Engine: `extraction/audio.py`, `extraction/transcribe.py`, `extraction/transcript.py`, `extraction/documents.py`, `ingestion/pipeline.py`, `jobs/queue.py`, `models.py`, `search.py`, `api/schemas.py`, `app.py`, `storage/repository.py`, `storage/migrations/0002_chunk_timestamps.sql`.
+  - Shell: `src-tauri/src/commands.rs` (dialog filters).
+  - UI: Settings (speech model, length limit), Library (audio source, progress), Item detail (length, model, language, timed transcript), Search ("Audio notes" filter, position in the recording).
+  - CI: build, lint, and test the decoder before the engine tests.
+- **Tests:**
+  - Decoder: resampling length and pitch at 8, 22.05, 44.1, and 48 kHz.
+  - Engine: every spoken fixture format, Opus, silence, truncated files, the length limit, cleanup and windowing, timestamps in search, progress, missing model then automatic retry, cancellation, deletion, logs, the format filter, the whisper binding, and a clean exit.
+  - Storage upgrade from a Phase 4 database.
+  - Network audit with an audio import.
+  - UI tests with axe checks.
+- **Privacy impact:** audio comes only from files the user imports; there is no microphone recording. The decoder and whisper.cpp run locally. whisper.cpp's own output, which includes transcript text, is discarded.
+- **Defaults used (design §11):**
+  - Longest recording 2 hours (`max_audio_seconds` = 7200).
+  - File size limit 100 MB, as for other files.
+  - Model `whisper-base`, unloaded after 5 minutes idle.
+
+## End report
+
+- **Done:**
+  - **Decoder helper** `omnirecall-audio-decode` (D-031):
+    - Built on symphonia and rubato. Decodes WAV, MP3, M4A (AAC/ALAC), AAC, FLAC, Ogg Vorbis, AIFF, and CAF to 16 kHz mono, as a child process.
+    - Probe and decode commands, JSON errors, and the length limit checked before and during decoding.
+    - Damaged packets are skipped up to a limit.
+    - About 3 MB; decodes a one-hour MP3 in 4 s with 11 MB peak.
+  - **Transcription** (D-032):
+    - whisper.cpp `base` from a local file, 5-minute windows cut at silence, language detection, and absolute timestamps.
+    - Progress once per second, cancellation within 0.5 s, and the model unloaded when idle.
+    - Without the model, items fail with "The speech model is not installed" and are queued again once it is installed.
+  - **Transcript cleanup and timed passages** (D-033):
+    - Non-speech tags and repetition loops are removed.
+    - Chunks store `start_ms` and `end_ms` (migration 0002).
+  - **Search:** a format filter (D-034). Results and item details include positions in the recording.
+  - **UI:**
+    - Settings: the speech model with its purpose, size, and license, plus "Longest recording to transcribe (minutes)".
+    - Library: audio files listed as "Audio", a progress bar while transcribing, audio in the supported formats list, and a note when the speech model is missing.
+    - Item detail: length, "Transcribed by Whisper base (whisper.cpp), on this device", language, a "Transcript" heading with a time range for each passage, and **Play recording**.
+    - Search: an "Audio notes" source option, and "at 1:02 in the recording" on results.
+    - The file dialog has Documents, Images, and Audio filters.
+- **Commands run:**
+  - Decoder: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` are clean (2 tests). `cargo build --release` passes.
+  - Engine: `ruff format --check .`, `ruff check .`, and `mypy omnirecall` (47 files) are clean. `OMNIRECALL_REQUIRE_AUDIO_DECODER=1 pytest -q`: 218 passed, 6 skipped. The skips are the 5 real-model tests and the model-archive download test (needs `OMNIRECALL_TEST_MINILM_ARCHIVE`). The traced network audit also passed with `OMNIRECALL_TEST_MODELS_DIR` set to the real MiniLM model and a synthetic whisper model.
+  - Shell: `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` are clean. `cargo test`: 22 passed.
+  - UI: `npm run format:check`, `npm run lint`, and `npm run typecheck` are clean. `npm test`: 33 passed, including the 5 new audio tests with axe checks. `npm run build`: 277 KB JS (85 KB gzip).
+  - Decoder timing: `docs/measurements.md` Phase 5.
+- **Exit gate evidence:**
+  - Met for the pipeline: every spoken fixture (M4A, WAV, MP3, Ogg Vorbis, FLAC) is decoded, windowed, transcribed, cleaned, chunked with timestamps, embedded, and found by search, all offline. The checks use a stand-in transcriber that returns the fixture's script with times, plus the real whisper.cpp binding loaded with a random model.
+  - **Not yet met for real speech recognition.** The `ggml-base.bin` model is not in this environment, so the real-model test (word error rate under 25% on each spoken fixture, detected language English) has not run. That part of the gate stays open until it does.
+- **Found and fixed:**
+  - OR-027 (P1): a segmentation fault at exit after a transcription.
+  - OR-026: cancelling a running transcription did not stop it.
+  - PyAV was dropped after finding GPL x264/x265 inside its wheels (D-031).
+- **Not done or skipped:**
+  - The real-model accuracy and speed runs, as above.
+  - Opus is not supported, because symphonia has no Opus decoder. Files fail with a clear message.
+  - Transcription on Intel Macs needs a source build of whisper.cpp (OR-020).
+  - Windows and macOS were not run. Bundling the decoder next to the packaged engine is Phase 6 work.
+  - There is no in-app playback from a given timestamp. **Play recording** opens the file in the system player.
+  - The Cargo manifests and `pyproject.toml` declare Apache-2.0 from Phase 0, while `licenses.md` says the project license is not chosen. The owner should settle this before release.
+- **Bugs:** OR-026 and OR-027 opened and closed with regression tests. Note added to OR-020 (still OPEN).
+- **Docs updated:**
+  - `decisions.md` D-031 to D-034.
+  - `design.md` §3 and §5.
+  - `licenses.md`, `measurements.md`, `support-matrix.md`, `privacy-audit.md`, and `bugs.md`.

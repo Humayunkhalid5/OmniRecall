@@ -33,3 +33,25 @@ Without a tray host, the window header remains the capture indicator, and closin
 | Linux Wayland | Not offered: the portal asks the user on every capture | n/a | n/a | n/a | The switch is disabled with an explanation (OR-015) |
 
 Scaling: frames are kept in physical pixels; the display's scale factor is stored where the OS reports it (Windows, macOS). Multiple displays: each display is captured, deduplicated, and stored separately with its display ID. Not tested: displays added or removed while capturing, mixed-DPI setups, and HDR displays.
+
+## Audio notes (Phase 5)
+
+Audio is imported as files (dialog, drag-and-drop, or folders); OmniRecall does not record from the microphone.
+
+| Format | Extensions | Decoded by the helper | Status |
+|---|---|---|---|
+| WAV (PCM, ADPCM) | `.wav`, `.wave` | yes | Verified on fixtures |
+| MP3 | `.mp3` | yes | Verified on fixtures |
+| M4A (AAC or Apple Lossless) | `.m4a` | yes | Verified on fixtures (AAC) |
+| AAC (ADTS) | `.aac` | yes | Decoder supports it; no fixture |
+| FLAC | `.flac` | yes | Verified on fixtures |
+| Ogg Vorbis | `.ogg`, `.oga` | yes | Verified on fixtures |
+| AIFF, CAF | `.aif`, `.aiff`, `.caf` | yes | Decoder supports it; no fixture |
+| Opus (in Ogg or WebM) | `.ogg`, `.opus` | no | Fails with "This audio encoding is not supported" (fixture) |
+
+| Platform | Decoder helper | whisper.cpp (`pywhispercpp` wheel) | Status |
+|---|---|---|---|
+| Linux x86_64 | built in CI | yes | Verified with fixtures and a synthetic model. The real `ggml-base` model has not been run here yet |
+| Windows x86_64 | builds (pure Rust) | yes | Not run; packaging in Phase 6 |
+| macOS arm64 | builds (pure Rust) | yes | Not run; packaging in Phase 6 |
+| macOS x86_64 | builds (pure Rust) | no wheel published | Transcription not available until whisper.cpp is built from source (OR-020) |

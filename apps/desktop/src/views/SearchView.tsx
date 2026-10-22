@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { engine, EngineCallError } from "../api/engine";
-import type { SearchResponse, SourceType } from "../api/types";
+import type { SearchFilters } from "../api/engine";
+import type { SearchResponse } from "../api/types";
 import { Highlighted } from "../components/Highlighted";
 import { Notice } from "../components/Notice";
-import { formatLocalTime, sourceLabels } from "../lib/format";
+import { formatClock, formatLocalTime, sourceLabels } from "../lib/format";
 
 interface Props {
   selectedId: string | null;
@@ -27,12 +28,13 @@ const matchedText = {
   semantic: "meaning",
 } as const;
 
-const SOURCE_FILTERS: { value: SourceType | "all"; label: string }[] = [
-  { value: "all", label: "All sources" },
-  { value: "file", label: "Files" },
-  { value: "text", label: "Pasted text" },
-  { value: "clipboard", label: "Clipboard" },
-  { value: "screenshot", label: "Screenshots" },
+const SOURCE_FILTERS: { value: string; label: string; filters: SearchFilters }[] = [
+  { value: "all", label: "All sources", filters: {} },
+  { value: "file", label: "Files", filters: { source_types: ["file"] } },
+  { value: "audio", label: "Audio notes", filters: { formats: ["audio"] } },
+  { value: "text", label: "Pasted text", filters: { source_types: ["text"] } },
+  { value: "clipboard", label: "Clipboard", filters: { source_types: ["clipboard"] } },
+  { value: "screenshot", label: "Screenshots", filters: { source_types: ["screenshot"] } },
 ];
 
 export function SearchView({
@@ -45,7 +47,7 @@ export function SearchView({
   onGoToSettings,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [source, setSource] = useState<SourceType | "all">("all");
+  const [source, setSource] = useState("all");
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,7 @@ export function SearchView({
     setLoading(true);
     setError(null);
     try {
-      const filters = source === "all" ? {} : { source_types: [source] };
+      const filters = SOURCE_FILTERS.find((f) => f.value === source)?.filters ?? {};
       const result = await engine.search(trimmed, filters);
       if (lastQuery.current === trimmed) {
         setResponse(result);
@@ -124,7 +126,7 @@ export function SearchView({
         <select
           id="source-filter"
           value={source}
-          onChange={(event) => setSource(event.target.value as SourceType | "all")}
+          onChange={(event) => setSource(event.target.value)}
         >
           {SOURCE_FILTERS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -210,6 +212,9 @@ export function SearchView({
                   <span className="result-foot" id={`why-${result.chunk_id}`}>
                     <span>{sourceLabels[result.source_type]}</span>
                     <time dateTime={result.captured_at}>{formatLocalTime(result.captured_at)}</time>
+                    {typeof result.start_ms === "number" && (
+                      <span>at {formatClock(result.start_ms)} in the recording</span>
+                    )}
                     <span>matched by {matchedText[result.matched_by]}</span>
                     {result.more_matches > 0 && <span>+{result.more_matches} more passages</span>}
                   </span>

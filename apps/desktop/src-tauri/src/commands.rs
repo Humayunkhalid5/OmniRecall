@@ -105,6 +105,15 @@ pub async fn import_os_paths(app: &AppHandle, paths: Vec<PathBuf>) {
     let _ = app.emit("import://result", payload);
 }
 
+// The engine's formats.list is the authority; these only pre-filter the dialog.
+const DOCUMENT_EXTENSIONS: &[&str] = &[
+    "txt", "text", "log", "md", "markdown", "csv", "tsv", "json", "html", "htm", "pdf", "docx",
+];
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"];
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "wav", "wave", "mp3", "m4a", "aac", "flac", "ogg", "oga", "aif", "aiff", "caf",
+];
+
 #[tauri::command]
 pub async fn import_files(app: AppHandle, state: State<'_, AppState>) -> Result<Value, RpcError> {
     let picked = tauri::async_runtime::spawn_blocking(move || {
@@ -112,16 +121,12 @@ pub async fn import_files(app: AppHandle, state: State<'_, AppState>) -> Result<
             .file()
             .set_title("Import files into OmniRecall")
             .add_filter(
-                "Supported documents",
-                &[
-                    "txt", "text", "log", "md", "markdown", "csv", "tsv", "json", "html", "htm",
-                    "pdf", "docx",
-                ],
+                "All supported files",
+                &[DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, AUDIO_EXTENSIONS].concat(),
             )
-            .add_filter(
-                "Images (text is read with OCR)",
-                &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"],
-            )
+            .add_filter("Documents", DOCUMENT_EXTENSIONS)
+            .add_filter("Images (text is read with OCR)", IMAGE_EXTENSIONS)
+            .add_filter("Audio (transcribed on this device)", AUDIO_EXTENSIONS)
             .blocking_pick_files()
     })
     .await

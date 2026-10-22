@@ -55,7 +55,7 @@ strict = true
 packages = ["omnirecall"]
 
 [[tool.mypy.overrides]]
-module = ["lancedb.*", "pyarrow.*", "pytesseract.*", "docx.*", "onnxruntime.*", "tokenizers.*"]
+module = ["lancedb.*", "pyarrow.*", "pytesseract.*", "docx.*", "onnxruntime.*", "tokenizers.*", "_pywhispercpp", "pywhispercpp.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

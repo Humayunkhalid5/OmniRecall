@@ -3,11 +3,13 @@
 Two checks:
 - static: only ``models.py`` may import networking modules;
 - runtime (Linux with strace): a full session (clipboard and screenshot capture,
-  document and image import, search, export, delete) makes no
-  ``connect``/``bind``/``sendto`` to an IP address, Tesseract included.
+  document, image, and audio import, search, export, delete) makes no
+  ``connect``/``sendto`` to an IP address, Tesseract and the audio decoder included.
 
 Set ``OMNIRECALL_TEST_MODELS_DIR`` to a models folder to run the session with
-the real embedding model, which also exercises ONNX Runtime and tokenizers.
+the real embedding and speech models, which also exercises ONNX Runtime,
+tokenizers, and whisper.cpp; without the embedding model, audio stops at
+"model missing" before decoding.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ import pytest
 
 PACKAGE = Path(__file__).resolve().parents[1] / "omnirecall"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "images"
+AUDIO = Path(__file__).resolve().parent / "fixtures" / "audio" / "voice_memo.m4a"
 NETWORK_MODULES = {
     "socket",
     "ssl",
@@ -63,6 +66,20 @@ def test_onnxruntime_is_imported_only_with_telemetry_off():
     assert "disable_telemetry_events()" in source
     server = (PACKAGE / "api" / "server.py").read_text(encoding="utf-8")
     assert 'os.environ["ORT_DISABLE_TELEMETRY"] = "1"' in server
+
+
+def test_whisper_models_are_never_loaded_by_name():
+    """pywhispercpp downloads a model given by name; the engine passes only a file path."""
+    users = []
+    for path in PACKAGE.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "download_model" not in source, path
+        if "pywhispercpp" in source:
+            users.append(path.relative_to(PACKAGE).as_posix())
+    assert users == ["extraction/transcribe.py"]
+    source = (PACKAGE / "extraction" / "transcribe.py").read_text(encoding="utf-8")
+    assert source.count("Model(") == 1 and "str(self.model_path)," in source
+    assert "if not self.model_path.is_file():" in source
 
 
 def test_only_model_setup_imports_network_modules():
@@ -106,6 +123,9 @@ def _session(
     # OCR runs Tesseract as a child process, which strace -f follows too.
     image = FIXTURES / "chat_message.png"
     imported = call("items.import_paths", {"paths": [str(image)]})["item_ids"][0]
+    # The audio decoder runs as a child process too (probe, decode).
+    call("formats.list", {})
+    audio = call("items.import_paths", {"paths": [str(AUDIO)]})["item_ids"][0]
     call("capture.set_source", {"source_type": "screenshot", "enabled": True})
     if call("capture.screenshot_check", {"app_known": False})["allowed"]:
         name = f"shot-{uuid.uuid4().hex}.png"
@@ -118,7 +138,8 @@ def _session(
             statuses = {
                 call("items.get", {"item_id": i})["item"]["status"] for i in (pasted, imported)
             }
-            if statuses == {"indexed"}:
+            heard = call("items.get", {"item_id": audio})["item"]["status"]
+            if statuses == {"indexed"} and heard in ("indexed", "failed"):
                 break
             time.sleep(0.2)
     call("search", {"query": "harbor otters"})

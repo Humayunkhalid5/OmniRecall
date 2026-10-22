@@ -56,6 +56,8 @@ async function command<T>(name: string, args: Record<string, unknown> = {}): Pro
 
 export interface SearchFilters {
   source_types?: SourceType[];
+  /** Imported file kinds, such as "audio". */
+  formats?: string[];
   captured_after?: string;
   captured_before?: string;
 }

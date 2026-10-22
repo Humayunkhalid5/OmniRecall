@@ -86,6 +86,11 @@ class ModelManager:
     def model_dir(self, model_id: str) -> Path:
         return self.models_dir / model_id
 
+    def model_file(self, model_id: str) -> Path:
+        """The installed file of a single-file model (such as a ggml model)."""
+        manifest = self.manifest(model_id)
+        return self.model_dir(model_id) / str(manifest.download["filename"])
+
     def manifest(self, model_id: str) -> Manifest:
         manifest = self.manifests.get(model_id)
         if manifest is None:

@@ -251,3 +251,56 @@
   - 5 minutes matches common screen-lock defaults.
 - **Docs updated:** `design.md` §11, §13.
 - **Replaces:** none.
+
+### D-031 — Audio is decoded by a bundled Rust helper, not PyAV or ffmpeg
+- **Date:** 2026-10-22
+- **Decision:**
+  - **Helper:** `omnirecall-audio-decode` (`services/audio-decoder`), a small Rust program built on symphonia 0.6.1 and rubato 5.0.1. The engine runs it as a child process, as it runs Tesseract.
+  - **Interface:**
+    - `probe <path>` prints one JSON line (codec, sample rate, channels, duration).
+    - `decode <path> <max-seconds>` streams 16 kHz mono 32-bit float samples on stdout.
+    - `--version`.
+    - Errors are one JSON line `{"code","message"}` on stderr with exit code 2.
+  - **Formats:** WAV, MP3, M4A (AAC or ALAC), AAC, FLAC, Ogg Vorbis, AIFF, and CAF. Opus is not supported and fails with `unsupported_codec`.
+  - **Limits:** the recording length limit is checked from the container's duration before decoding and again while decoding. A file with more than 1,000 damaged packets fails with `malformed_file`.
+  - **Where the engine finds it:** `OMNIRECALL_AUDIO_DECODER`, then next to the engine executable (packaged app), then the checkout's release build (from source only), then `PATH`. A missing helper fails the item with `audio_decoder_unavailable`.
+- **Reason:**
+  - PyAV wheels bundle an FFmpeg build that includes GPL x264 and x265, which would make the engine bundle GPL. Calling a system `ffmpeg` is not something users have on Windows or macOS.
+  - symphonia (MPL-2.0) and rubato (MIT) are permissive, pure Rust, and need no system libraries. The helper is about 3 MB.
+  - A child process keeps a crash or a hostile file out of the engine, and killing it is how cancellation stops decoding.
+  - Measured: a one-hour MP3 decodes and resamples in about 4 s with an 11 MB peak (`measurements.md` Phase 5).
+- **Docs updated:** `design.md` §3, `licenses.md`, `support-matrix.md`.
+- **Replaces:** none.
+
+### D-032 — Transcription with whisper.cpp `base`, in 5-minute windows
+- **Date:** 2026-10-22
+- **Decision:**
+  - **Engine and model:** whisper.cpp through `pywhispercpp` 1.5.1, model `ggml-base.bin`, installed by the user in Settings (download or file). It is loaded only from that local path, never by name. The language is detected per window.
+  - **Threads and memory:** at most 4 threads. The model is loaded on the first recording and unloaded after 5 minutes idle, like the embedding model.
+  - **Windows:** audio is transcribed in 300 s windows. Each cut falls at the quietest 100 ms within 10 s of the window edge, so words are not split. Timestamps are made absolute.
+  - **Silenced output:** whisper.cpp's own log output is routed to a function that discards it, so no transcript text reaches stderr or the log.
+  - **Missing model:** audio items fail with `transcription_model_missing`, and they are queued again automatically when the model is installed.
+  - **Progress:** `items.progress` notifications at most once per second, with seconds done, total, and percent.
+  - **Cancellation:** a running transcription checks whether its job was cancelled at most every 0.5 s and stops within one segment.
+- **Reason:**
+  - `base` is multilingual, MIT-licensed, 142 MB, and the plan's Phase 0 candidate (design §3).
+  - Bounded windows keep memory flat for a 2-hour recording and give progress and cancellation natural checkpoints.
+- **Docs updated:** `design.md` §3.
+- **Replaces:** none.
+
+### D-033 — Transcript cleanup and timed passages
+- **Date:** 2026-10-22
+- **Decision:**
+  - **Cleanup:** remove non-speech tags such as `[Music]`, `(laughs)`, or `*applause*` (up to 60 characters) and music symbols. Collapse a phrase of 1 to 8 words repeated more than 3 times in a row to one copy (a known Whisper loop). Merge identical consecutive segments.
+  - **Text:** one segment per line, chunked with the normal 500/50 chunker.
+  - **Timestamps:** each chunk stores `start_ms` and `end_ms`, taken from the segments it overlaps (migration `0002_chunk_timestamps.sql`). Search results and item details return them, and the UI shows "at 1:02 in the recording" and a time range for each passage.
+- **Reason:** design §3 says to keep timestamps when the engine provides them. Without cleanup, silence and music produce tags and loops that pollute keyword search.
+- **Docs updated:** `design.md` §3, §5.
+- **Replaces:** none.
+
+### D-034 — Search filter by format
+- **Date:** 2026-10-22
+- **Decision:** `search` accepts `filters.formats`, matched against the item's `metadata.format`. The UI's "Audio notes" source option uses `["audio"]`. Audio files import as `file` items with `format: "audio"`, so the existing source types are unchanged.
+- **Reason:** audio arrives through the same file import as documents and images, and a new source type would have needed a migration of every source filter.
+- **Docs updated:** `design.md` §3 (Retrieval).
+- **Replaces:** none.
