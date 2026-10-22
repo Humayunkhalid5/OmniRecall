@@ -49,15 +49,14 @@ def main() -> None:
         sys.exit("embedding model not installed")
     started = time.perf_counter()
     if engine.repo.chunk_count() < args.chunks:
-        index = 0
         # ~430 chars per document → one chunk each with the 500-char baseline.
-        while (
-            engine.repo.status_counts().get("queued", 0) + engine.repo.chunk_count() < args.chunks
-        ):
+        # Counted once: counting the whole library on every import made the
+        # benchmark itself the bottleneck at 100,000 chunks.
+        have = engine.repo.status_counts().get("queued", 0) + engine.repo.chunk_count()
+        for index in range(args.chunks - have):
             body = " ".join(rng.sample(sentences, 3)) + f" Reference {index:06d}."
             engine.import_text({"text": body[:480], "label": f"synthetic {index}"})
-            index += 1
-            if engine.repo.active_job_count() > 900:
+            if engine.repo.backlog_count() > 900:
                 time.sleep(0.5)
         while engine.repo.active_job_count() > 0 or engine.repo.pending_outbox(limit=1):
             time.sleep(0.5)

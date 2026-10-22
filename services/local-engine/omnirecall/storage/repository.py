@@ -529,7 +529,9 @@ class Repository:
 
     def outbox_pending_for_item(self, item_id: str) -> int:
         row = self.db.conn.execute(
-            "SELECT COUNT(*) FROM vector_outbox o JOIN chunks c ON c.id = o.chunk_id "
+            # CROSS JOIN keeps SQLite starting from this item's chunks; led by the
+            # status index it would scan every pending entry, once per item.
+            "SELECT COUNT(*) FROM chunks c CROSS JOIN vector_outbox o ON o.chunk_id = c.id "
             "WHERE c.item_id = ? AND o.status = 'pending'",
             (item_id,),
         ).fetchone()
@@ -578,6 +580,13 @@ class Repository:
     def enqueue_job(self, item_id: str, stage: str = STAGE_PROCESS) -> str:
         with self.db.write() as conn:
             return self._insert_job(conn, item_id, stage, utc_now())
+
+    def backlog_count(self) -> int:
+        """Items accepted but not yet searchable: what the queue capacity limits."""
+        row = self.db.conn.execute(
+            "SELECT COUNT(*) FROM items WHERE status IN ('queued','processing')"
+        ).fetchone()
+        return int(row[0])
 
     def active_job_count(self) -> int:
         row = self.db.conn.execute(

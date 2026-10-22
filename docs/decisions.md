@@ -365,3 +365,10 @@
 - **Docs updated:** `licenses.md`; `release.md`; `third_party_licenses/README.md`; `bugs.md` OR-030.
 - **Replaces:** the Windows part of D-037 (UB Mannheim build from Chocolatey).
 
+### D-043 — The queue capacity counts every item not yet searchable
+- **Date:** 2026-10-22
+- **Decision:** imports and screenshot capture are refused with `queue_full` when the number of items in `queued` or `processing` reaches `queue_capacity` (default 1,000), instead of the number of open extraction jobs. `status.queue.backlog` reports that number, and the window header shows it while indexing. Finalizing an item counts its pending vector writes starting from its own chunks.
+- **Reason:** extraction jobs finish long before embedding, so the old count let tens of thousands of items wait for vectors, and each finalize scanned all of them (OR-031). Counting items keeps the backlog, memory, and finalize cost bounded, and matches what the user sees as "waiting".
+- **Docs updated:** `measurements.md`; `bugs.md` OR-031.
+- **Replaces:** none.
+

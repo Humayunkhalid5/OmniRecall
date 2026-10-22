@@ -110,7 +110,7 @@ class ScreenshotCapture:
             return "app_unknown"  # an app exclusion cannot be honoured: fail closed
         if rules.app_excluded(app):
             return "excluded_app"
-        if self.repo.active_job_count() >= self._settings().queue_capacity:
+        if self.repo.backlog_count() >= self._settings().queue_capacity:
             return "queue_full"
         return None
 

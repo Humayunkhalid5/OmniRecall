@@ -87,6 +87,18 @@ Use this template when a real bug is found:
 - [ ] Resource and search latency results are measured on documented hardware.
 - [x] Clean install, upgrade, and uninstall behavior are tested.
 
+### OR-031 — Importing a large folder slowed to about 8 items per second
+- **Type:** BUG
+- **Priority:** P1
+- **Status:** CLOSED
+- **Environment:** Linux, engine 0.1.0 from source, real MiniLM model, `scripts/bench_search.py --chunks 100000`.
+- **Steps to reproduce:**
+  1. Import tens of thousands of text items as fast as the queue accepts them.
+  2. Watch `vector_outbox` and the item states.
+- **Expected:** indexing runs at the embedding speed (about 70 items/s on this machine), and the queue limit holds the backlog near `queue_capacity`.
+- **Actual:** the limit counted only open extraction jobs, which finish quickly, so up to 30,000 items waited for vectors. Marking each item indexed counted its pending writes through the outbox status index, a scan of the whole backlog per item, and the rate fell to about 8 items/s. A 100,000-chunk build took 6650 s.
+- **Fix:** D-043. The capacity counts items in `queued` and `processing`, and the per-item count starts from the item's chunks (`CROSS JOIN`). `test_queue_capacity_counts_items_waiting_for_vectors` fails without it. The same build now takes 1372 s.
+
 ### OR-029 — The first real speech-to-text check failed for the wrong reasons
 - **Type:** BUG (test)
 - **Priority:** P2

@@ -140,7 +140,7 @@ export function App() {
         />
         <p className="engine-badge" role="status">
           <span className={`dot ${busy ? "dot-busy" : "dot-ok"}`} aria-hidden="true" />
-          {busy ? `Indexing (${status?.queue.active ?? 0} queued)` : stateText[engineState.state]}
+          {busy ? `Indexing (${status?.queue.backlog ?? 0} waiting)` : stateText[engineState.state]}
         </p>
       </header>
       <div className={`app-body ${selected ? "with-detail" : ""}`}>

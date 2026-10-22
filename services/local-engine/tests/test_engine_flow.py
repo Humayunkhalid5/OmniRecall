@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 from docgen import write_pdf
 from engine_support import make_engine, wait_status, wait_until
 from pydantic import ValidationError as PydanticValidationError
+from support import HashEmbedder
 
 from omnirecall.errors import EngineError
 
@@ -154,3 +157,39 @@ def test_status_shape(engine):
     assert status["encryption_at_rest"] is False
     assert status["model"]["installed"] is True
     assert {"db_bytes", "vector_bytes", "media_bytes", "data_dir"} <= status["storage"].keys()
+
+
+class GatedEmbedder(HashEmbedder):
+    """Embeds only once released, so items wait with their vectors pending."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate = threading.Event()
+
+    def embed(self, texts):
+        self.gate.wait(20)
+        return super().embed(texts)
+
+
+def test_queue_capacity_counts_items_waiting_for_vectors(tmp_path):
+    embedder = GatedEmbedder()
+    eng, _ = make_engine(tmp_path, embedder=embedder)
+    try:
+        eng.settings_update({"changes": {"queue_capacity": 10}})
+        ids = [
+            eng.import_text({"text": f"harbor note number {i}", "label": "n"})["item"]["id"]
+            for i in range(10)
+        ]
+        # Extraction finishes; only the vector writes are left.
+        wait_until(lambda: eng.repo.active_job_count() == 0)
+        assert eng.repo.backlog_count() == 10
+        with pytest.raises(EngineError) as info:
+            eng.import_text({"text": "one more harbor note", "label": "n"})
+        assert info.value.code == "queue_full"
+        embedder.gate.set()
+        for item_id in ids:
+            assert wait_status(eng, item_id, {"indexed", "failed"}) == "indexed"
+        eng.import_text({"text": "one more harbor note", "label": "n"})
+    finally:
+        embedder.gate.set()
+        eng.close()

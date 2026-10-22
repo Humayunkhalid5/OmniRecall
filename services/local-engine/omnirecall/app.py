@@ -408,6 +408,7 @@ class Engine:
             "queue": {
                 "capacity": self._settings.queue_capacity,
                 "active": self.repo.active_job_count(),
+                "backlog": self.repo.backlog_count(),
                 "workers_busy": self.runner.active,
                 "workers": self._settings.worker_concurrency,
             },
