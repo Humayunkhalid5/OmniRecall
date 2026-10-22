@@ -2,8 +2,9 @@
 
 Two checks:
 - static: only ``models.py`` may import networking modules;
-- runtime (Linux with strace): a full session (capture, import, search, export,
-  delete) makes no ``connect``/``bind``/``sendto`` to an IP address.
+- runtime (Linux with strace): a full session (clipboard and screenshot capture,
+  document and image import, search, export, delete) makes no
+  ``connect``/``bind``/``sendto`` to an IP address, Tesseract included.
 
 Set ``OMNIRECALL_TEST_MODELS_DIR`` to a models folder to run the session with
 the real embedding model, which also exercises ONNX Runtime and tokenizers.
@@ -19,11 +20,13 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
 
 PACKAGE = Path(__file__).resolve().parents[1] / "omnirecall"
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "images"
 NETWORK_MODULES = {
     "socket",
     "ssl",
@@ -79,7 +82,9 @@ def test_only_model_setup_imports_network_modules():
     assert offenders == []
 
 
-def _session(proc: subprocess.Popen[bytes], export_path: Path, with_model: bool) -> None:
+def _session(
+    proc: subprocess.Popen[bytes], export_path: Path, with_model: bool, data_dir: Path
+) -> None:
     assert proc.stdin and proc.stdout
     counter = iter(range(1, 10_000))
 
@@ -98,10 +103,22 @@ def _session(proc: subprocess.Popen[bytes], export_path: Path, with_model: bool)
     call("capture.set_source", {"source_type": "clipboard", "enabled": True})
     copied = call("capture.clipboard", {"text": "audit note about the harbor", "app_known": True})
     pasted = call("items.import_text", {"text": "audit text about otters"})["item"]["id"]
+    # OCR runs Tesseract as a child process, which strace -f follows too.
+    image = FIXTURES / "chat_message.png"
+    imported = call("items.import_paths", {"paths": [str(image)]})["item_ids"][0]
+    call("capture.set_source", {"source_type": "screenshot", "enabled": True})
+    if call("capture.screenshot_check", {"app_known": False})["allowed"]:
+        name = f"shot-{uuid.uuid4().hex}.png"
+        shutil.copy(image, data_dir / "media" / "incoming" / name)
+        frame = {"file": name, "display_id": "audit", "width": 10, "height": 10}
+        call("capture.screenshot", frame)
     if with_model:
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            if call("items.get", {"item_id": pasted})["item"]["status"] == "indexed":
+            statuses = {
+                call("items.get", {"item_id": i})["item"]["status"] for i in (pasted, imported)
+            }
+            if statuses == {"indexed"}:
                 break
             time.sleep(0.2)
     call("search", {"query": "harbor otters"})
@@ -142,7 +159,7 @@ def test_engine_session_makes_no_network_calls(tmp_path):
     try:
         assert proc.stdout
         assert json.loads(proc.stdout.readline())["method"] == "engine.ready"
-        _session(proc, tmp_path / "audit.zip", with_model=bool(models))
+        _session(proc, tmp_path / "audit.zip", bool(models), tmp_path / "data")
         assert proc.wait(timeout=60) == 0
     finally:
         if proc.poll() is None:

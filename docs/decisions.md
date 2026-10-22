@@ -194,3 +194,60 @@
 - **Reason:** a deleted item must not reappear through an export, and an interrupted export must not look complete.
 - **Docs updated:** `design.md` §13.
 - **Replaces:** none.
+
+### D-027 — Screenshots are taken by the shell and handed over as files
+- **Date:** 2026-10-22
+- **Decision:** the Rust shell takes screenshots, because it owns OS permissions, the frontmost app, idle time, and lock state (rules.md §2.2).
+  - **Platforms:** `xcap` on Windows (GDI) and macOS (CoreGraphics). Linux X11 uses `x11rb` (RandR monitors, `GetImage`, and the ScreenSaver extension for idle time).
+  - **Before each capture:** the shell skips the frame when the screen is locked, the user is idle past the setting, macOS Screen Recording is off, or OmniRecall's own window is in front. Otherwise it asks the engine's `capture.screenshot_check`, which checks capture state, Tesseract availability, app exclusions (fail closed when the app is unknown), and queue room.
+  - **After each capture:** per display, the shell computes a 64-bit DCT perceptual hash. A frame within Hamming distance 5 of the last accepted frame for that display is dropped without being written.
+  - **Hand-off:** a new frame is written as a PNG into `media/incoming/` (user-only permissions, written under a temporary name and renamed). The shell then calls `capture.screenshot`, which re-checks everything, moves the file into `media/screenshots/YYYY/MM/`, and queues the item. The engine removes the incoming file in every case and clears leftovers at start.
+  - **Wayland:** reported as unsupported. The portal asks the user on every capture, which periodic capture cannot honour (OR-015).
+- **Reason:**
+  - The engine never reads an excluded app's screen, and an unchanged screen costs no disk write or OCR.
+  - The file hand-off keeps multi-megabyte images out of the JSON-RPC channel.
+  - The engine's re-check means either side alone can stop capture.
+- **Docs updated:** `design.md` §3, §6, §11; `support-matrix.md`.
+- **Replaces:** none.
+
+### D-028 — Frames dropped after OCR leave no trace
+- **Date:** 2026-10-22
+- **Decision:** after OCR, a screenshot is dropped when:
+  - it has no text;
+  - its text matches a text exclusion;
+  - its text looks like a secret (`screenshot_detect_secrets`, on by default, best effort);
+  - its text is the same as the last accepted frame on that display. In this case the earlier item gets `last_seen_at` instead.
+
+  A dropped frame's row, job, image, and thumbnail are deleted. It does not become a `skipped` item. Every skip, before or after OCR, is counted per session in memory and logged as an outcome code only.
+- **Reason:**
+  - A `skipped` row per unchanged frame would add thousands of rows a day while a video plays.
+  - A sensitive frame must not keep even a hash (consistent with D-022).
+  - Counts and outcome logs are enough to show the user that filtering happened (implementation plan: "record why a frame was skipped without storing the image").
+- **Docs updated:** `design.md` §6.
+- **Replaces:** none.
+
+### D-029 — OCR details and image import
+- **Date:** 2026-10-22
+- **Decision:**
+  - **Engine:** Tesseract 5 (`eng`), found through `OMNIRECALL_TESSERACT_CMD` (set by the packaged app in Phase 6) or `PATH`.
+  - **Image preparation:** only the first frame is read, after EXIF rotation. Transparency is flattened onto white, the image is converted to grayscale, and images narrower than 1,600 px are upscaled (at most 3x).
+  - **Limits:** 100 MP, enforced before decoding. OCR times out after 120 s.
+  - **Image import:** PNG, JPEG, WebP, BMP, TIFF, and GIF import as `file` items with OCR text. An image with no text fails with `extraction_empty`.
+  - **Tesseract missing:** the item fails with `ocr_unavailable`, and screenshot capture is refused.
+  - **Recorded per item:** the OCR engine and version.
+- **Reason:** Tesseract does best near a 30 px x-height. UI text in 1x screenshots is smaller, so it is upscaled. On the fixtures and real 1280x800 screens, the median OCR time is 0.45 s on REF-CI-LINUX.
+- **Docs updated:** `design.md` §3.
+- **Replaces:** none.
+
+### D-030 — Text-only mode, thumbnails, and inactivity pause
+- **Date:** 2026-10-22
+- **Decision:**
+  - **Text-only mode:** removes each new screenshot's image (and thumbnail) as soon as the item is indexed, and marks its media `pruned`.
+  - **Thumbnails:** otherwise a 640 px WebP preview (`<hash>.thumb.webp`) is kept next to the PNG. It counts toward the media cap and is removed with the image.
+  - **Inactivity pause:** defaults to 5 minutes without keyboard or mouse input (`pause_on_idle_s` = 300; 0 turns it off).
+  - **Lock detection:** Windows uses `OpenInputDesktop`, macOS uses `CGSSessionScreenIsLocked`, and X11 uses the screen saver state.
+- **Reason:**
+  - The PRD requires a pause on lock or inactivity "where supported", and `design.md` §11 had no inactivity value.
+  - 5 minutes matches common screen-lock defaults.
+- **Docs updated:** `design.md` §11, §13.
+- **Replaces:** none.

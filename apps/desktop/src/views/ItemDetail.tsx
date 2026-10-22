@@ -22,13 +22,23 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
     // The parent keys this panel by item, so state starts fresh for each one.
     let active = true;
     engine
       .getItem(itemId)
-      .then((d) => active && setDetail(d))
+      .then((d) => {
+        if (!active) return;
+        setDetail(d);
+        if (d.item.source_type === "screenshot" && d.item.media_status === "present") {
+          engine
+            .itemPreview(itemId)
+            .then((url) => active && setPreview(url))
+            .catch(() => active && setPreview(null));
+        }
+      })
       .catch((e: EngineCallError) => active && setError(e.message));
     return () => {
       active = false;
@@ -70,6 +80,13 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
       {!detail && !error && <p className="muted">Loading…</p>}
       {item && detail && (
         <>
+          {preview && (
+            <img
+              className="preview"
+              src={preview}
+              alt={`Screenshot${typeof meta.app === "string" ? ` of ${meta.app}` : ""}`}
+            />
+          )}
           <dl className="facts">
             <dt>Source</dt>
             <dd>{sourceLabels[item.source_type] ?? item.source_type}</dd>
@@ -91,6 +108,36 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
                 </dd>
               </>
             )}
+            {typeof meta.app === "string" && (
+              <>
+                <dt>App</dt>
+                <dd>{meta.app}</dd>
+              </>
+            )}
+            {typeof meta.display_name === "string" && item.source_type === "screenshot" && (
+              <>
+                <dt>Display</dt>
+                <dd>{meta.display_name}</dd>
+              </>
+            )}
+            {typeof meta.last_seen_at === "string" && (
+              <>
+                <dt>Still on screen</dt>
+                <dd>
+                  until{" "}
+                  <time dateTime={meta.last_seen_at}>{formatLocalTime(meta.last_seen_at)}</time>
+                </dd>
+              </>
+            )}
+            {typeof meta.ocr_engine === "string" && (
+              <>
+                <dt>Text read by</dt>
+                <dd>
+                  {meta.ocr_engine === "tesseract" ? "Tesseract" : meta.ocr_engine}
+                  {typeof meta.ocr_version === "string" && ` ${meta.ocr_version}`}
+                </dd>
+              </>
+            )}
             {typeof meta.pages === "number" && (
               <>
                 <dt>Pages</dt>
@@ -106,7 +153,7 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
             {item.media_status === "pruned" && (
               <>
                 <dt>Image</dt>
-                <dd>Removed by retention policy; text kept</dd>
+                <dd>Not kept (retention or text-only mode); its text is still searchable</dd>
               </>
             )}
           </dl>
@@ -114,6 +161,11 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
             {item.source_type === "file" && detail.source_exists && (
               <button type="button" onClick={openOriginal}>
                 Open original
+              </button>
+            )}
+            {item.source_type === "screenshot" && item.media_status === "present" && (
+              <button type="button" onClick={openOriginal}>
+                Open image
               </button>
             )}
             <button type="button" className="danger" onClick={() => setConfirming(true)}>

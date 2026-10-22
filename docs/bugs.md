@@ -116,8 +116,38 @@ Use this template when a real bug is found:
 - **Regression test:** `tests/test_rpc_server.py::test_requests_in_flight_at_shutdown_are_answered` (fails 4 of 4 runs without the fix).
 - **Resolution:** fixed.
 
+### OR-024 — Pausing capture reset the screenshot interval in the shell
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** Linux (Xvfb), debug desktop build, Phase 4 branch.
+- **Steps to reproduce:** set the screenshot interval to 5 s, then pause and resume capture, or leave and reopen Settings.
+- **Expected:** the 5 s interval stays.
+- **Actual:** the timing field showed 30 again. The shell could also fall back to the 30 s default, because the `capture.state` notification sent on pause carried no screenshot settings.
+- **Evidence:** Phase 4 live run.
+- **Root cause:** `_capture_changed` sent the bare snapshot, not the full state that `capture.state` returns.
+- **Fix plan:** notify with the full state.
+- **Regression test:** `tests/test_screenshots.py::test_watcher_settings_are_published_with_capture_state` (asserts the pause notification carries the interval).
+- **Resolution:** fixed. Re-checked in the live run: the field kept 5 s after the app restarted.
+
 ### Phase 3 notes
 
 - **OR-003:** mitigations in place for clipboard: capture off by default, explicit opt-in on the first-run screen and in settings, tray and header indicator, global pause (tray, header, CommandOrControl+Alt+Shift+P), per-source pause, app/folder/pattern exclusions, dropped copies leave no trace (D-022), and the network audit in `docs/privacy-audit.md`. Stays OPEN until screenshots (Phase 4) carry the same controls and the beta privacy review passes.
 - **OR-008:** `capture/sensitive.py` detects common key and token formats, credential assignments, connection strings with passwords, Luhn-valid card numbers, and lone password-like tokens. The settings page says detection is best effort and offers the on/off switch and exclusions. Stays OPEN by design: complete detection cannot be promised.
 - **OR-015:** clipboard reading on Linux works on X11 and on Wayland compositors with the data-control protocol (arboard `wayland-data-control`); global shortcuts may not register on Wayland, and the tray needs an AppIndicator host. Recorded in `docs/support-matrix.md`. The screenshot half is Phase 4 work; stays OPEN.
+
+### Phase 4 notes
+
+- **OR-003:** the screenshot source now has the same controls as the clipboard:
+  - off by default;
+  - first-run explanation;
+  - tray and header indicator;
+  - global and per-source pause and the shortcut;
+  - app and text exclusions (fail closed);
+  - lock and inactivity pause;
+  - OmniRecall's own window skipped;
+  - best-effort secret filter on OCR text;
+  - retention, text-only mode, and the media cap.
+
+  It stays OPEN until the beta privacy review (Phase 7).
+- **OR-015:** screenshots run on X11 (verified on Xvfb) and are disabled on Wayland with an explanation. GNOME and KDE on real hardware are still untested. It stays OPEN until those runs in Phase 6.

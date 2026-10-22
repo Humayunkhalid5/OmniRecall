@@ -24,3 +24,15 @@ Phase 3 live run: the engine log after real clipboard copies contained only `cli
 ## Storage of filtered copies
 
 Copies dropped as too large, excluded, unknown-app, or possibly secret are not written anywhere: no item, no hash, no payload file (D-022). Only per-session counters in memory record that filtering happened.
+
+## Screenshots (Phase 4)
+
+- **Before capture:** nothing is captured while screenshot capture is off or paused, the screen is locked, the user is idle, OS permission is missing, OmniRecall is in front, or an app exclusion applies. If app exclusions exist and the front app is unknown, nothing is captured either.
+  - Tests: `tests/test_screenshots.py` for the engine side, and the shell `screenshot.rs` tests for hashing and file handling.
+  - Live run on Xvfb: pause shortcut, idle pause, and fail-closed exclusion.
+- **Frames written to disk:** frames go to `media/incoming/` with user-only permissions and are removed by the engine in every outcome. The engine also clears leftovers at start.
+  - Unchanged frames are dropped before they are written.
+  - Frames dropped after OCR (no text, excluded text, secret-looking text, same text) leave no row, job, image, or thumbnail (D-028).
+  - In the live run, a terminal showing a GitHub token was dropped as `sensitive`. A search of the data folder found no trace of the token.
+- **Logs:** they record outcome codes only (`screenshot_capture` with a status). `test_logs_never_contain_ocr_text` checks that OCR text, app names, and queries never appear. In the live run, the engine log held no captured words.
+- **Network:** Tesseract runs as a local child process. The traced audit session (`test_engine_session_makes_no_network_calls`) now includes image import and a screenshot, and strace follows child processes.

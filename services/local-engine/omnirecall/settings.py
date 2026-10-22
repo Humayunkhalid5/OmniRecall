@@ -48,6 +48,7 @@ class Settings(BaseModel):
     # Capture and privacy
     capture_paused: bool = False
     clipboard_detect_secrets: bool = True
+    screenshot_detect_secrets: bool = True
     # Consent
     first_run_completed: bool = False
 

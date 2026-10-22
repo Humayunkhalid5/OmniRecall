@@ -74,3 +74,23 @@ Command: `uv run --project services/local-engine python scripts/bench_search.py 
 
 ### Model setup
 Downloading all-MiniLM-L6-v2 through `ModelManager` (HTTPS, archive SHA-256 and per-file SHA-256 verified, staged then renamed): 2.4 s for 83 MB on this machine's network.
+
+## Phase 4 (2026-10-22, REF-CI-LINUX)
+
+### OCR (Tesseract 5.3.4, `eng`)
+| Input | Median of 3 |
+|---|---|
+| 1280x800 screenshot of the app and a terminal (upscaled to 1600 px wide before OCR) | 0.45-0.47 s |
+| Same screen resized to 2560x1600 | 0.45 s |
+
+Fixture accuracy (`tests/test_ocr.py`): character error rate below 5% on all four fixture images.
+
+### Screenshot live run (Xvfb 1280x800, 5 s interval)
+From intake to `indexed`, a new frame took 0.46-1.53 s over 6 frames (OCR plus embedding; the first included loading the model). The engine log for the whole session recorded 68 frame outcomes:
+- 11 captured;
+- 46 dropped in the shell as unchanged, before anything was written;
+- 5 skipped while idle;
+- 5 refused because an app exclusion existed and the app was unknown;
+- 1 dropped after OCR as sensitive.
+
+CPU and battery impact on a real laptop are not measured here (Phase 6).

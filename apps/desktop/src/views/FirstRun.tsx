@@ -33,14 +33,20 @@ export function FirstRun({ onDone }: Props) {
         <h2 id="captured-heading">What it captures</h2>
         <ul>
           <li>
-            <strong>Nothing, until you turn a source on.</strong> Clipboard capture is off. You can
-            switch it on in Settings and pause it at any time.
+            <strong>Nothing, until you turn a source on.</strong> Clipboard and screenshot capture
+            are off. You can switch each one on in Settings and pause it at any time.
           </li>
           <li>Files, folders, and text you import yourself.</li>
           <li>
             When clipboard capture is on: text you copy. Copies that look like passwords, keys, or
             card numbers are dropped on a best-effort basis. That filter cannot catch everything, so
             pause capture or exclude an app before copying something sensitive.
+          </li>
+          <li>
+            When screenshot capture is on: a picture of each screen at the interval you choose, with
+            its text read on this computer. It skips frames while the screen is locked, while you
+            are away, while OmniRecall or an excluded app is in front, and when nothing has changed.
+            Images are kept for 7 days by default, then only their text.
           </li>
         </ul>
       </section>

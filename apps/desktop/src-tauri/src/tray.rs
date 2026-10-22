@@ -21,6 +21,7 @@ pub enum Indicator {
 pub struct CaptureSummary {
     pub indicator: Indicator,
     pub clipboard_active: bool,
+    pub screenshot_active: bool,
     pub any_enabled: bool,
     pub paused: bool,
 }
@@ -29,6 +30,7 @@ impl CaptureSummary {
     pub const OFF: Self = Self {
         indicator: Indicator::Off,
         clipboard_active: false,
+        screenshot_active: false,
         any_enabled: false,
         paused: false,
     };
@@ -56,6 +58,7 @@ impl CaptureSummary {
         Self {
             indicator,
             clipboard_active: flag("clipboard", "active"),
+            screenshot_active: flag("screenshot", "active"),
             any_enabled,
             paused,
         }

@@ -71,6 +71,11 @@ A Rust-only backend can be reconsidered if deployment or resource measurements j
 Every adapter returns a common `IngestionEnvelope`: stable ID, source type, capture timestamp, source label/URI, media URI or text payload, content hash, and privacy classification. Adapters must honor disabled sources and exclusion rules before persistence.
 
 - **Clipboard (Phase 3, D-023):** the shell watches the clipboard because only it can read the OS clipboard and the frontmost application. It reads nothing unless the engine reports clipboard capture as active (enabled and not paused), treats the clipboard content present when capture turns on as a baseline rather than a copy, and uses the OS change counter where one exists (Windows sequence number, macOS `changeCount`; Linux compares text). Each new copy goes to the engine's `capture.clipboard`, which re-checks capture state and applies the size limit, app and pattern exclusions, and the secret filter before anything is stored. A dropped copy leaves no item, hash, payload, or log line; only in-memory per-session counters by reason (D-022).
+- **Screenshots (Phase 4, D-027, D-028):** the shell captures each display on the configured interval while the engine reports screenshot capture as active.
+  - **Skipped before capture:** while the screen is locked, after the inactivity period, without OS permission, while OmniRecall is in front, or when the engine's `capture.screenshot_check` refuses (pause, app exclusions, OCR missing).
+  - **Dropped after capture:** near-identical frames, by perceptual hash (§6). New frames are handed to `capture.screenshot` as PNG files in `media/incoming/`.
+  - **After OCR:** the engine drops frames with no text, excluded or secret-looking text, or the same text as the previous frame on that display.
+- **Images (Phase 4, D-029):** imported images are read with Tesseract OCR, first frame only, up to 100 MP.
 
 ### Ingestion/job manager
 - Persist jobs before processing.
@@ -228,12 +233,14 @@ Rule semantics (D-025): `app` matches the frontmost application name case-insens
 
 ## 6. Screenshot deduplication
 
-A practical initial algorithm:
-1. Capture only after consent and permission checks.
-2. Resize a copy to a small fixed comparison size and convert to grayscale.
-3. Compute a 64-bit perceptual hash; compare Hamming distance to the last accepted frame for that display (default: distance of 5 or less counts as a duplicate, see §11).
-4. Optionally calculate changed-pixel ratio for the 5% policy.
-5. Discard near-identical frames before OCR and media persistence.
+Implemented algorithm (D-027, D-028):
+1. Capture only after consent and permission checks, and only when the engine's admission check allows it.
+2. Box-downscale a copy to 32x32 and convert to grayscale.
+3. Compute a 64-bit perceptual hash: a 2-D DCT-II, keep the 8x8 lowest frequencies, and set each bit by comparison with their median (DC excluded from the median). Compare the Hamming distance to the last accepted frame for that display. A distance of 5 or less counts as a duplicate (§11).
+4. Discard near-identical frames in the shell, before anything is written, OCR'd, or stored.
+5. After OCR, hash the normalized text. If it matches the last accepted frame for that display, drop the new frame and record `last_seen_at` on the earlier item.
+
+The changed-pixel ratio was not needed: on the fixtures, a text cursor stays within distance 5 and different screens are far apart (`screenshot.rs` tests).
 6. Store the hash, comparison version, and skip reason—not the discarded image.
 
 A raw byte hash only detects exact duplicates, not visually similar frames. The 5% threshold must be configurable and tested; scrolling text can matter even when the overall image changes little.
@@ -319,6 +326,8 @@ Starting defaults, all configurable. They are tuned only with measurements from 
 | Max query length | 1,000 characters |
 | Screenshot interval | 30 s (minimum 5 s) |
 | Screenshot duplicate threshold | perceptual-hash Hamming distance of 5 or less (of 64 bits) |
+| Screenshot inactivity pause | 5 minutes without input (0 = off) |
+| Screenshot secret filter | on (best effort) |
 | Job queue capacity | 1,000 jobs (backpressure beyond this) |
 | Worker concurrency | 2 |
 | Job retries | 3, with backoff of 10 s, 60 s, 5 min |
@@ -329,7 +338,7 @@ Starting defaults, all configurable. They are tuned only with measurements from 
 | Rank fusion | reciprocal rank fusion, k = 60 |
 | Results shown | 20 |
 | Model idle unload | 5 minutes |
-| Screenshot image retention | 7 days, then text only |
+| Screenshot image retention | 7 days, then text only (text-only mode: image removed once indexed) |
 | Media storage cap | 5 GB, prune oldest media first |
 | Text item retention | until the user deletes it |
 | Search query storage | off |

@@ -1,7 +1,7 @@
 import { captureState, item, status } from "./fixtures";
 import { shell } from "./tauri";
 
-/** A running engine with an indexed item and every Phase 3 call answered. */
+/** A running engine with an indexed item and every Phase 3-4 call answered. */
 export function engineRunning() {
   shell.commands.set("engine_state", () => ({ state: "running", pid: 42 }));
   shell.commands.set("pause_shortcut", () => ({
@@ -9,6 +9,13 @@ export function engineRunning() {
     registered: true,
   }));
   shell.methods.set("capture.state", () => captureState());
+  shell.commands.set("screenshot_status", () => ({
+    unsupported_reason: null,
+    permission: "not_required",
+    last_error: null,
+    last_capture_ms: null,
+  }));
+  shell.commands.set("item_preview", () => null);
   shell.methods.set("exclusions.list", () => ({ exclusions: [] }));
   shell.methods.set("storage.usage", () => ({
     media_bytes: 0,
@@ -20,6 +27,7 @@ export function engineRunning() {
     settings: {
       first_run_completed: true,
       clipboard_detect_secrets: true,
+      screenshot_detect_secrets: true,
       max_file_bytes: 104_857_600,
       max_pdf_pages: 500,
       results_shown: 20,

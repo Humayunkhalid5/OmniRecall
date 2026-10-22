@@ -6,6 +6,8 @@ mod capture;
 mod commands;
 mod engine;
 mod paths;
+mod screen;
+mod screenshot;
 mod tray;
 
 use std::path::PathBuf;
@@ -17,21 +19,31 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use capture::ClipboardWatcher;
 use engine::{EngineEvent, EngineState, RestartPolicy, Supervisor};
+use screenshot::{ScreenshotWatcher, WatchConfig};
 use tray::{CaptureSummary, Tray, PAUSE_SHORTCUT};
 
 pub struct AppState {
     pub engine: Supervisor,
     pub data_dir: PathBuf,
     pub watcher: ClipboardWatcher,
+    pub screenshots: ScreenshotWatcher,
     pub capture: Mutex<CaptureSummary>,
     pub shortcut_registered: bool,
 }
 
-/// Apply the engine's capture state to the watcher and the indicator.
-fn apply_capture(app: &AppHandle, summary: CaptureSummary) {
-    if let Some(state) = app.try_state::<AppState>() {
-        state.watcher.set_active(summary.clipboard_active);
-        *state.capture.lock().expect("capture lock") = summary.clone();
+/// Apply the engine's capture state (None: engine not running, so capture is
+/// off) to the watchers and the indicator.
+fn apply_capture(app: &AppHandle, state: Option<&Value>) {
+    let summary = state.map_or(CaptureSummary::OFF, CaptureSummary::from_state);
+    if let Some(app_state) = app.try_state::<AppState>() {
+        app_state.watcher.set_active(summary.clipboard_active);
+        match state {
+            Some(value) => app_state
+                .screenshots
+                .configure(WatchConfig::from_state(value, summary.screenshot_active)),
+            None => app_state.screenshots.deactivate(),
+        }
+        *app_state.capture.lock().expect("capture lock") = summary.clone();
     }
     tray::update(app, &summary);
 }
@@ -43,8 +55,8 @@ fn refresh_capture(app: &AppHandle) {
             return;
         };
         match state.engine.request("capture.state", json!({})).await {
-            Ok(value) => apply_capture(&app, CaptureSummary::from_state(&value)),
-            Err(_) => apply_capture(&app, CaptureSummary::OFF),
+            Ok(value) => apply_capture(&app, Some(&value)),
+            Err(_) => apply_capture(&app, None),
         }
     });
 }
@@ -62,7 +74,7 @@ pub fn toggle_pause(app: &AppHandle) {
             .request("capture.pause", json!({ "paused": !paused }))
             .await
         {
-            apply_capture(&app, CaptureSummary::from_state(&value));
+            apply_capture(&app, Some(&value));
         }
     });
 }
@@ -108,20 +120,24 @@ pub fn run() {
                         if matches!(state, EngineState::Running { .. }) {
                             refresh_capture(&handle);
                         } else {
-                            apply_capture(&handle, CaptureSummary::OFF);
+                            apply_capture(&handle, None);
                         }
                         let _ = handle.emit("engine://state", state);
                     }
                     EngineEvent::Notification(message) => {
                         if message["method"] == "capture.state" {
                             let params: &Value = &message["params"];
-                            apply_capture(&handle, CaptureSummary::from_state(params));
+                            apply_capture(&handle, Some(params));
                         }
                         let _ = handle.emit("engine://notification", message);
                     }
                 }),
             );
             let watcher = ClipboardWatcher::spawn(supervisor.clone());
+            let screenshots = ScreenshotWatcher::spawn(
+                supervisor.clone(),
+                data_dir.join("media").join("incoming"),
+            );
             // Another app may own the shortcut, or the platform may not
             // support global shortcuts (Wayland); the tray and the window
             // still pause capture.
@@ -130,6 +146,7 @@ pub fn run() {
                 engine: supervisor.clone(),
                 data_dir,
                 watcher,
+                screenshots,
                 capture: Mutex::new(CaptureSummary::OFF),
                 shortcut_registered,
             });
@@ -179,6 +196,10 @@ pub fn run() {
             commands::export_data,
             commands::add_folder_exclusion,
             commands::pause_shortcut,
+            commands::item_preview,
+            commands::screenshot_status,
+            commands::request_screen_permission,
+            commands::open_screen_permission_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building OmniRecall")
@@ -186,6 +207,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 let state = app.state::<AppState>();
                 state.watcher.set_active(false);
+                state.screenshots.deactivate();
                 let engine = state.engine.clone();
                 tauri::async_runtime::block_on(async move { engine.stop().await });
             }

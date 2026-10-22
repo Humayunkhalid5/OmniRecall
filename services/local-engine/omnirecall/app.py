@@ -15,13 +15,15 @@ from omnirecall.api import protocol, schemas
 from omnirecall.api.server import RpcServer
 from omnirecall.capture.clipboard import ClipboardCapture
 from omnirecall.capture.exclusions import ExclusionService
+from omnirecall.capture.screenshot import Frame, ScreenshotCapture
 from omnirecall.capture.state import CaptureState
 from omnirecall.embeddings.base import Embedder, vector_table_name
 from omnirecall.embeddings.minilm import MODEL_ID as MINILM_ID
 from omnirecall.embeddings.minilm import MiniLMEmbedder
 from omnirecall.errors import EngineError
 from omnirecall.export import Exporter
-from omnirecall.extraction.documents import DOCUMENT_FORMATS
+from omnirecall.extraction.documents import DOCUMENT_FORMATS, IMAGE_FORMATS
+from omnirecall.extraction.ocr import OcrEngine, TesseractOcr
 from omnirecall.ingestion.pipeline import Pipeline
 from omnirecall.ingestion.service import IngestionService
 from omnirecall.jobs.queue import JobRunner
@@ -42,6 +44,8 @@ CHUNK_PREVIEW_LIMIT = 50
 RETENTION_INTERVAL_S = 3600
 # Changed only through capture.pause, which notifies the shell.
 SHELL_MANAGED_SETTINGS = frozenset({"capture_paused"})
+# Settings the shell's screenshot watcher follows; a change re-sends capture.state.
+WATCHER_SETTINGS = ("screenshot_interval_s", "pause_on_idle_s", "screenshot_phash_threshold")
 
 
 def _dir_bytes(path: Path) -> int:
@@ -63,6 +67,7 @@ def item_view(item: Item) -> dict[str, Any]:
         "source_label": item.source_label,
         "source_uri": item.source_uri,
         "captured_at": item.captured_at,
+        "media_uri": item.media_uri,
         "media_status": item.media_status,
         "metadata": item.metadata,
         "status": item.status,
@@ -80,6 +85,7 @@ class Engine:
         notify: Notify,
         embedder: Embedder | None = None,
         start_workers: bool = True,
+        ocr: OcrEngine | None = None,
     ) -> None:
         self.data_dir = data_dir
         self.models_dir = models_dir or data_dir / "models"
@@ -90,7 +96,17 @@ class Engine:
         self._stop = threading.Event()
         self._vector_wake = threading.Event()
 
-        for sub in ("db", "vectors", "logs", "exports", "media/incoming", "media/imports"):
+        self.ocr: OcrEngine = ocr or TesseractOcr()
+        subdirs = (
+            "db",
+            "vectors",
+            "logs",
+            "exports",
+            "media/incoming",
+            "media/imports",
+            "media/screenshots",
+        )
+        for sub in subdirs:
             (data_dir / sub).mkdir(parents=True, exist_ok=True)
         self.db = Database(data_dir / "db" / "omnirecall.sqlite")
         self.db.migrate()
@@ -131,6 +147,7 @@ class Engine:
             self.media_root,
             lambda: self._settings,
             notify,
+            ocr=self.ocr,
             vectors_ready=self._vector_wake.set,
         )
         self.runner.register(STAGE_PROCESS, self.pipeline.process)
@@ -140,6 +157,18 @@ class Engine:
         self.clipboard = ClipboardCapture(
             self.capture_state, self.exclusions, self.ingestion, lambda: self._settings
         )
+        self.screenshots = ScreenshotCapture(
+            self.capture_state,
+            self.exclusions,
+            self.repo,
+            self.media_root,
+            lambda: self._settings,
+            lambda: self.runner.wake(),
+            self.ocr.available,
+        )
+        self.pipeline.reviewers["screenshot"] = self.screenshots.review
+        self.pipeline.on_discard = self._screenshot_discarded
+        self._clear_incoming()
         self.retention = RetentionService(self.repo, self.media_root, self.writer.lock)
         self.exporter = Exporter(self.db, self.media_root, self.data_dir)
         self._maintenance: threading.Thread | None = None
@@ -171,6 +200,14 @@ class Engine:
                 thread.join(timeout=30)
         self.db.close()
 
+    def _screenshot_discarded(self, _item: Item, reason: str) -> None:
+        self.screenshots.record(reason)
+
+    def _clear_incoming(self) -> None:
+        """Frames left in media/incoming by a crash were never accepted; remove them."""
+        for leftover in (self.media_root / "incoming").glob("shot-*.png"):
+            leftover.unlink(missing_ok=True)
+
     def _path_excluded(self, path: Path) -> bool:
         resolved = path.resolve()
         # The app's own data is never imported back into itself.
@@ -182,7 +219,8 @@ class Engine:
         self._settings = self.settings_store.load()
         self.ingestion.settings = self._settings
         logs.info("capture_state", status="capturing" if state["capturing"] else "idle")
-        self.notify("capture.state", state)
+        # The full state, so the shell's watchers keep the screenshot timing.
+        self.notify("capture.state", self.capture_get({}))
 
     def _run_retention(self) -> None:
         report = self.retention.run(self._settings)
@@ -276,6 +314,9 @@ class Engine:
             "capture.set_source": self.capture_set_source,
             "capture.pause": self.capture_pause,
             "capture.clipboard": self.capture_clipboard,
+            "capture.screenshot_check": self.capture_screenshot_check,
+            "capture.screenshot": self.capture_screenshot,
+            "capture.screenshot_skip": self.capture_screenshot_skip,
             "exclusions.list": self.exclusions_list,
             "exclusions.add": self.exclusions_add,
             "exclusions.add_path": self.exclusions_add_path,
@@ -457,12 +498,26 @@ class Engine:
         retention_keys = ("screenshot_retention_days", "media_cap_bytes")
         if any(getattr(before, k) != getattr(self._settings, k) for k in retention_keys):
             self._run_retention()
+        if any(getattr(before, k) != getattr(self._settings, k) for k in WATCHER_SETTINGS):
+            self.notify("capture.state", self.capture_get({}))
         return {"settings": self._settings.model_dump()}
 
     # ---- capture and privacy -----------------------------------------------
 
     def capture_get(self, _params: dict[str, Any]) -> dict[str, Any]:
-        return self.capture_state.snapshot() | {"session": {"clipboard": self.clipboard.counts()}}
+        version = self.ocr.version()
+        return self.capture_state.snapshot() | {
+            "session": {
+                "clipboard": self.clipboard.counts(),
+                "screenshot": self.screenshots.counts(),
+            },
+            "screenshot": {
+                "interval_s": self._settings.screenshot_interval_s,
+                "pause_on_idle_s": self._settings.pause_on_idle_s,
+                "phash_threshold": self._settings.screenshot_phash_threshold,
+            },
+            "ocr": {"available": version is not None, "engine": self.ocr.name, "version": version},
+        }
 
     def capture_set_source(self, params: dict[str, Any]) -> dict[str, Any]:
         p = schemas.CaptureSourceParams.model_validate(params)
@@ -477,6 +532,18 @@ class Engine:
     def capture_clipboard(self, params: dict[str, Any]) -> dict[str, Any]:
         p = schemas.ClipboardCaptureParams.model_validate(params)
         return self.clipboard.capture(p.text, p.app, p.app_known)
+
+    def capture_screenshot_check(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ScreenshotCheckParams.model_validate(params)
+        return self.screenshots.check(p.app, p.app_known)
+
+    def capture_screenshot(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ScreenshotParams.model_validate(params)
+        return self.screenshots.submit(Frame(**p.model_dump()))
+
+    def capture_screenshot_skip(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ScreenshotSkipParams.model_validate(params)
+        return self.screenshots.skip(p.reason)
 
     def exclusions_list(self, _params: dict[str, Any]) -> dict[str, Any]:
         return {"exclusions": self.repo.list_exclusions()}
@@ -573,9 +640,14 @@ class Engine:
             self.runner.wake()
 
     def formats_list(self, _params: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "documents": [
+        def view(formats: Any) -> list[dict[str, Any]]:
+            return [
                 {"kind": f.kind, "label": f.label, "extensions": list(f.extensions)}
-                for f in DOCUMENT_FORMATS
+                for f in formats
             ]
+
+        return {
+            "documents": view(DOCUMENT_FORMATS),
+            "images": view(IMAGE_FORMATS),
+            "ocr_available": self.ocr.available(),
         }

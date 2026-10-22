@@ -180,7 +180,13 @@ test("retention limits are saved", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Save retention" }));
   await waitFor(() =>
     expect(updates).toEqual([
-      { changes: { screenshot_retention_days: 3, media_cap_bytes: 5 * 1024 ** 3 } },
+      {
+        changes: {
+          screenshot_retention_days: 3,
+          media_cap_bytes: 5 * 1024 ** 3,
+          text_only_mode: false,
+        },
+      },
     ]),
   );
 });
