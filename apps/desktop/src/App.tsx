@@ -64,7 +64,7 @@ export function App() {
     useCallback(
       (note: EngineNotification) => {
         if (note.method.startsWith("items.") && note.method !== "items.progress") bump();
-        if (note.method === "media.pruned") bump();
+        if (note.method === "media.pruned" || note.method === "index.repaired") bump();
       },
       [bump],
     ),

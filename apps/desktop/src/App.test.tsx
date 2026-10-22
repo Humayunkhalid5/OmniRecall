@@ -86,6 +86,32 @@ test("search warns when nothing matched strongly and when the model is missing",
   expect(screen.getByText("Possible match")).toBeInTheDocument();
 });
 
+test("search explains keyword-only results while the index is repaired, then re-runs", async () => {
+  engineRunning();
+  let repaired = false;
+  shell.methods.set("search", () =>
+    repaired
+      ? searchResponse()
+      : searchResponse({
+          semantic_available: false,
+          semantic_unavailable_reason: "index_repairing",
+        }),
+  );
+  const { container } = render(<App />);
+  await userEvent.type(await screen.findByLabelText("Search your history"), "borrow{Enter}");
+  expect(await screen.findByText("The search index is being repaired")).toBeInTheDocument();
+  expect(screen.getByText(/Nothing you saved is lost/)).toBeInTheDocument();
+  expect(await audit(container)).toEqual([]);
+
+  repaired = true;
+  act(() =>
+    shell.emit("engine://notification", { method: "index.repaired", params: { vectors: 3 } }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("The search index is being repaired")).not.toBeInTheDocument(),
+  );
+});
+
 test("search with no results suggests simpler wording", async () => {
   engineRunning();
   shell.methods.set("search", () =>

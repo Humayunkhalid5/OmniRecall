@@ -8,12 +8,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from omnirecall import logs
 from omnirecall.errors import EngineError, NotFoundError
 from omnirecall.ids import format_utc, utc_now, uuid7
 from omnirecall.storage.db import Database
 from omnirecall.storage.states import ItemStatus, JobStatus, check_transition
 
 STAGE_PROCESS = "process"
+# FTS5 keeps the keyword index in these tables (the content stays in `chunks`).
+FTS_SHADOW_TABLES = ("chunks_fts_data", "chunks_fts_idx", "chunks_fts_docsize", "chunks_fts_config")
 STAGE_DELETE = "delete"
 
 
@@ -449,7 +452,37 @@ class Repository:
             conn.execute("INSERT INTO chunks_fts (chunks_fts) VALUES ('optimize')")
 
     def rebuild_fts(self) -> None:
+        """Rebuild the keyword index from the chunk rows (D-035).
+
+        When FTS5's own bookkeeping rows are damaged, even 'rebuild' and DROP
+        fail ("vtable constructor failed"). Then the shadow tables are reset to
+        the rows of a freshly created, empty index with the same definition, and
+        the rebuild runs on that.
+        """
+        try:
+            with self.db.write() as conn:
+                conn.execute("INSERT INTO chunks_fts (chunks_fts) VALUES ('rebuild')")
+            return
+        except sqlite3.DatabaseError:
+            logs.error("fts_index_damaged")
+        definition = self.db.conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chunks_fts'"
+        ).fetchone()[0]
+        template = sqlite3.connect(":memory:")
+        try:
+            template.execute(definition)
+            fresh = {
+                table: template.execute(f"SELECT * FROM {table}").fetchall()  # noqa: S608
+                for table in FTS_SHADOW_TABLES
+            }
+        finally:
+            template.close()
         with self.db.write() as conn:
+            for table, rows in fresh.items():
+                conn.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed names
+                for row in rows:
+                    marks = ",".join("?" * len(row))
+                    conn.execute(f"INSERT INTO {table} VALUES ({marks})", row)  # noqa: S608
             conn.execute("INSERT INTO chunks_fts (chunks_fts) VALUES ('rebuild')")
 
     def fts_integrity_ok(self) -> bool:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
 import numpy as np
@@ -22,11 +23,13 @@ class ConsistencyReport:
     pending_outbox: int
     stuck_items: int
     fts_ok: bool
+    vector_index_ok: bool = True
 
     @property
     def consistent(self) -> bool:
         return (
-            self.missing_vectors == 0
+            self.vector_index_ok
+            and self.missing_vectors == 0
             and self.orphan_vectors == 0
             and self.pending_outbox == 0
             and self.stuck_items == 0
@@ -38,10 +41,17 @@ class ConsistencyReport:
 
 
 class ConsistencyService:
-    def __init__(self, repo: Repository, writer: IndexWriter, batch_size: int = 32) -> None:
+    def __init__(
+        self,
+        repo: Repository,
+        writer: IndexWriter,
+        batch_size: int = 32,
+        on_repaired: Callable[[ConsistencyReport], None] | None = None,
+    ) -> None:
         self.repo = repo
         self.writer = writer
         self.batch_size = batch_size
+        self.on_repaired = on_repaired or (lambda _report: None)
 
     def _stuck_items(self) -> list[str]:
         """Items queued/processing with no live job, e.g. after a lost job row."""
@@ -56,7 +66,11 @@ class ConsistencyService:
     def verify(self) -> ConsistencyReport:
         sqlite_ids = self.repo.indexed_chunk_ids()
         all_sqlite = self.repo.all_chunk_ids()
-        vector_ids = self.writer.vectors.all_chunk_ids()
+        try:
+            vector_ids = self.writer.vectors.all_chunk_ids()
+            vector_ok = True
+        except Exception:  # noqa: BLE001 - unreadable table: report it, repair elsewhere
+            vector_ids, vector_ok = set(), False
         return ConsistencyReport(
             sqlite_chunks=len(all_sqlite),
             vector_rows=len(vector_ids),
@@ -65,10 +79,32 @@ class ConsistencyService:
             pending_outbox=len(self.repo.pending_outbox(limit=100_000)),
             stuck_items=len(self._stuck_items()),
             fts_ok=self.repo.fts_integrity_ok(),
+            vector_index_ok=vector_ok,
         )
+
+    def repair_damaged(self) -> ConsistencyReport | None:
+        """If the vector table is damaged, delete it and re-embed from SQLite."""
+        if not self.writer.embedder.available() or not self.discard_if_damaged():
+            return None
+        report = self.rebuild()
+        self.on_repaired(report)
+        return report
+
+    def discard_if_damaged(self) -> bool:
+        """Delete the vector table if any of it is unreadable (D-035). True if it was."""
+        with self.writer.lock:
+            if self.writer.vectors.check():
+                return False
+            logs.error("vector_index_damaged")
+            self.writer.vectors.discard()
+            return True
 
     def reconcile(self) -> ConsistencyReport:
         """Repair divergence; SQLite wins. Safe to run at every startup."""
+        # Without the model a damaged table is kept until vectors can be rebuilt.
+        repaired = self.repair_damaged()
+        if repaired is not None:
+            return repaired
         self.writer.apply_pending_outbox(self.batch_size)
         all_sqlite = self.repo.all_chunk_ids()
         vector_ids = self.writer.vectors.all_chunk_ids()
@@ -101,6 +137,7 @@ class ConsistencyService:
         replaced once the side table is complete. Valid existing vectors are
         reused through the embedding cache; anything else is re-embedded.
         """
+        self.discard_if_damaged()
         store = self.writer.vectors
         side = f"{store.table_name}__rebuild"
         store.drop_named(side)

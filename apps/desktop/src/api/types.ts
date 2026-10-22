@@ -61,6 +61,8 @@ export interface SearchResponse {
   results: SearchResult[];
   count: number;
   semantic_available: boolean;
+  /** Why meaning-based matching was skipped for this search, if it was. */
+  semantic_unavailable_reason?: "model_missing" | "index_repairing" | null;
   no_strong_match: boolean;
   took_ms: number;
 }
