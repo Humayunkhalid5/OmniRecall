@@ -86,6 +86,19 @@ Use this template when a real bug is found:
 - [ ] Resource and search latency results are measured on documented hardware.
 - [ ] Clean install, upgrade, and uninstall behavior are tested.
 
+### OR-028 — A corruption test raced the engine's own start-up repair
+- **Type:** BUG (test)
+- **Priority:** P3
+- **Status:** CLOSED
+- **Environment:** REF-CI-LINUX; failed in about 5 of 6 runs once the full suite ran in parallel with other work.
+- **Steps to reproduce:** `pytest tests/test_corruption.py::test_damage_found_while_running_falls_back_then_repairs`.
+- **Expected:** the test damages the vector table under a running engine, then sees search fall back to keywords.
+- **Actual:** search still used vectors. The engine's start-up reconciliation had not run yet when the test damaged the files, so it found the damage first and rebuilt the table before the search.
+- **Root cause:** the test waited for `index.verify` to report consistent, which is already true before the start-up reconciliation runs. The engine behaved correctly.
+- **Fix plan:** the engine sets `startup_reconciled` when its start-up reconciliation has finished; the test waits for it before damaging the table.
+- **Regression test:** the same test, run 8 times in a row without a failure.
+- **Resolution:** fixed in `app.py` and `tests/test_corruption.py`.
+
 ### OR-027 — Engine crashed with a segmentation fault on exit after transcribing
 - **Type:** BUG
 - **Priority:** P1

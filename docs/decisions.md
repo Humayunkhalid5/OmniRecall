@@ -304,3 +304,28 @@
 - **Reason:** audio arrives through the same file import as documents and images, and a new source type would have needed a migration of every source filter.
 - **Docs updated:** `design.md` §3 (Retrieval).
 - **Replaces:** none.
+
+### D-035 — A damaged search index is discarded and rebuilt from SQLite
+- **Date:** 2026-10-22
+- **Decision:** the LanceDB table and the FTS5 index are derived data. When the vector table cannot be read in full (damaged or missing data files, manifests, or the whole table), the engine deletes what is left and re-embeds every chunk from SQLite: at startup in reconciliation, and while running when a vector search or write fails. Search meanwhile returns keyword results with `semantic_unavailable_reason: "index_repairing"`, the UI says the index is being repaired and nothing is lost, and `index.repaired` re-runs the search when it is done. Without the model the damaged table is kept and reported until the model is installed. A damaged FTS5 index is rebuilt; if even the rebuild fails, its shadow tables are reset from a fresh template first.
+- **Reason:** SQLite holds every chunk's text, so nothing in either index is irreplaceable, and a partial repair would leave results that disagree with the database.
+- **Docs updated:** `design.md` §7 (Consistency); `threat-model.md` (T9); `troubleshooting.md`.
+- **Replaces:** none.
+
+### D-036 — A damaged database opens in recovery mode
+- **Date:** 2026-10-22
+- **Decision:** before starting, the engine runs `PRAGMA quick_check` on its database (read-only). Only SQLite's own damage codes (`SQLITE_CORRUPT`, `SQLITE_NOTADB`) count; a locked file, a full disk, or a permission error is not damage and is left to fail the normal start. On damage the engine starts in recovery mode, which serves `health`, `status`, `database.recover`, and `database.reset`, and nothing else. The app shows the choice; nothing changes until the user confirms one.
+  - **Recover:** copy every readable row of settings, sources, exclusions, items, tombstones, and chunks into a new database with the current schema, in rowid ranges, skipping unreadable ranges. Items whose chunks were lost are re-read from disk (imported files) or marked failed with `recovery_lost_text` (everything else), never shown as indexed with missing text. Media no recovered item refers to is deleted. Capture is turned off, because exclusions may have been lost. Indexes, vectors, and jobs are rebuilt by the normal start.
+  - **Start over:** delete the database, vectors, and all stored media. Imported originals are never touched.
+  - **Newer version:** a database whose schema is newer than the engine (`schema_too_new`) opens the same screen with no actions, so a downgrade cannot destroy data.
+  - One action per start; then the app restarts the engine.
+- **Reason:** SQLite is the only copy of the text, so it cannot be rebuilt, and starting on a damaged file risks failing in the middle of a write. Offering recovery for a lock or a full disk would invite a destructive choice for a temporary problem.
+- **Docs updated:** `threat-model.md`; `troubleshooting.md`.
+- **Replaces:** none.
+
+### D-037 — Packaging: engine one-dir folder in the app's resources
+- **Date:** 2026-10-22
+- **Decision:** installers carry the PyInstaller one-dir engine as the Tauri resource folder `engine/`, with the audio decoder beside the executable. Tesseract is bundled in `engine/tesseract/` on Windows (UB Mannheim build) and macOS (Homebrew build, libraries made relative with `dylibbundler`, signed ad hoc); Linux packages depend on the distribution's `tesseract-ocr` and English data. The engine prefers a bundled Tesseract and points `TESSDATA_PREFIX` at its data. Targets: NSIS (Windows), .dmg (macOS, Apple Silicon), .deb and .rpm (Linux; no AppImage, which cannot depend on Tesseract). The release workflow builds, installs, reinstalls, and uninstalls each package on its OS. Installers are unsigned until signing accounts exist.
+- **Reason:** a one-dir engine starts without unpacking itself on each launch (the one-file mode would). Tauri's `externalBin` takes only single files, so the folder goes in resources. Bundling Tesseract on Linux would duplicate a library every distribution ships and updates.
+- **Docs updated:** `release.md`; `licenses.md`; `design.md` §9 (Deployment).
+- **Replaces:** D-015's note that the sidecar sits next to the app executable.

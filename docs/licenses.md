@@ -8,15 +8,15 @@ Verified in Phase 0 (2026-10-21) from package metadata and upstream model cards.
 |---|---|---|---|---|
 | all-MiniLM-L6-v2 (ONNX export) | Embeddings, 384-dim | Apache-2.0 | Upstream `sentence-transformers/all-MiniLM-L6-v2` @ `7dbbc90392e2f80f3d3c277d6e90027e55de9125`; download mirror `chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz` (83,178,821 bytes) | archive SHA-256 `913d7300…16ec3`; per-file SHA-256 in `omnirecall/model_manifests/all-minilm-l6-v2.json` |
 | Whisper `base` (ggml, whisper.cpp) | Audio transcription | MIT (OpenAI Whisper weights and whisper.cpp) | `huggingface.co/ggerganov/whisper.cpp` `ggml-base.bin` | SHA-1 `465707469ff3a37a2b9b8d8f89f2f99de7299dac` (published in whisper.cpp `models/README.md`) |
-| Tesseract `eng` traineddata | OCR | Apache-2.0 | OS package (`tesseract-ocr-eng`), Homebrew `tesseract`, or the UB Mannheim Windows build | from the OS package manager |
+| Tesseract `eng` traineddata | OCR | Apache-2.0 | OS package (`tesseract-ocr-eng`) on Linux; copied into the Windows and macOS installers from the UB Mannheim and Homebrew builds | from the OS package manager |
 
-Redistribution: all three licenses permit bundling with attribution. The MVP still downloads the embedding and Whisper models on user action to keep the installer small (OR-018).
+Redistribution: all three licenses permit bundling with attribution. The installers include only the Tesseract data; the embedding and Whisper models are downloaded on user action to keep the installer small (OR-018).
 
 ## Native runtimes
 
 | Component | License | Notes |
 |---|---|---|
-| Tesseract 5 (binary) | Apache-2.0 | Called as a subprocess via `pytesseract`. Linux/macOS: system package; Windows installer must ship the UB Mannheim build (Apache-2.0) — Phase 6 packaging task. |
+| Tesseract 5 (binary) | Apache-2.0 | Called as a subprocess via `pytesseract`. Linux: the distribution's package, a dependency of the .deb and .rpm. Windows and macOS: shipped in the installer's `engine/tesseract/` (UB Mannheim build from Chocolatey; Homebrew build with its libraries), with `eng.traineddata`. The bundled folder also holds the libraries Tesseract links against (Leptonica, BSD-2-Clause, and image libraries such as libpng, libtiff, libjpeg, libwebp, giflib, OpenJPEG, and zlib). `package_engine.py` writes `engine/tesseract/FILES.txt` listing every file; check each library's license against that list before the first public release (`release.md`). |
 | ONNX Runtime 1.31.0 | MIT | Wheel bundles the CPU provider only. |
 | whisper.cpp (via `pywhispercpp` 1.5.1) | MIT | No macOS x86_64 wheel is published; Intel Macs need a source build (tracked in `bugs.md` OR-020). |
 | LanceDB 0.40.0 / Lance | Apache-2.0 | |
@@ -24,6 +24,8 @@ Redistribution: all three licenses permit bundling with attribution. The MVP sti
 | SQLite (CPython `sqlite3`) | Public domain | FTS5 availability checked at startup. |
 | `omnirecall-audio-decode` (this repo, `services/audio-decoder`) | Project license | Rust helper that decodes audio (D-031). Its dependencies are listed below. |
 | Tauri 2.12 and plugins | MIT OR Apache-2.0 | |
+| PyInstaller 6.22.3 (build tool; its bootloader is in the engine executable) | GPL-2.0-or-later with the bootloader exception | The exception allows distributing the frozen engine under any license. |
+| CPython 3.12 (in the frozen engine) | PSF-2.0 | |
 | WebKitGTK (Linux runtime) | LGPL-2.1 | Dynamically linked system library, not bundled. |
 
 ## Python packages (runtime)
