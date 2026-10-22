@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from omnirecall.errors import NotFoundError
+from omnirecall.errors import EngineError, NotFoundError
 from omnirecall.ids import format_utc, utc_now, uuid7
 from omnirecall.storage.db import Database
 from omnirecall.storage.states import ItemStatus, JobStatus, check_transition
@@ -257,6 +257,36 @@ class Repository:
                 "UPDATE items SET metadata_json = ?, updated_at = ? WHERE id = ?",
                 (json.dumps(merged, separators=(",", ":")), utc_now(), item_id),
             )
+
+    def latest_screenshot_text(
+        self, display_id: str, exclude_item: str | None = None
+    ) -> tuple[str, str] | None:
+        """(item id, OCR text hash) of the newest accepted frame on a display."""
+        row = self.db.conn.execute(
+            "SELECT id, json_extract(metadata_json, '$.text_hash') AS text_hash FROM items "
+            "WHERE source_type = 'screenshot' AND status IN ('processing', 'indexed') "
+            "AND json_extract(metadata_json, '$.display_id') = ? "
+            "AND json_extract(metadata_json, '$.text_hash') IS NOT NULL AND id != ? "
+            "ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (display_id, exclude_item or ""),
+        ).fetchone()
+        return (row["id"], row["text_hash"]) if row else None
+
+    def discard_item(self, item_id: str) -> str | None:
+        """Remove an item that never reached search (no chunks or vectors yet).
+
+        Used for captures dropped after extraction; returns its media URI so the
+        caller can remove the file. Nothing of the item stays in the database.
+        """
+        with self.db.write() as conn:
+            row = conn.execute("SELECT media_uri FROM items WHERE id = ?", (item_id,)).fetchone()
+            if row is None:
+                return None
+            if conn.execute("SELECT 1 FROM chunks WHERE item_id = ?", (item_id,)).fetchone():
+                raise EngineError("invalid_state", "Indexed items are deleted, not discarded")
+            conn.execute("DELETE FROM jobs WHERE item_id = ?", (item_id,))
+            conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        return str(row["media_uri"]) if row["media_uri"] else None
 
     def items_with_media(
         self, source_types: list[str] | None = None, captured_before: str | None = None

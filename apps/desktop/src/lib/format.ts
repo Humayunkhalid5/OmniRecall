@@ -49,6 +49,9 @@ const errorMessages: Record<string, string> = {
   model_missing: "The search model is not installed yet.",
   cancelled: "Processing was cancelled.",
   payload_missing: "The captured content is no longer available.",
+  ocr_unavailable: "Text recognition (Tesseract) is not installed.",
+  ocr_failed: "Text recognition failed for this image.",
+  ocr_timeout: "Text recognition took too long.",
 };
 
 export function describeError(code: string | null | undefined): string {

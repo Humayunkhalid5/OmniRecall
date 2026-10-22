@@ -141,5 +141,6 @@ PERMANENT_ERRORS = frozenset(
         "malformed_file",
         "binary_content",
         "unsupported_source",
+        "ocr_unavailable",
     }
 )

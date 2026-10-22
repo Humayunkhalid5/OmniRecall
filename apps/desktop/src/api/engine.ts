@@ -7,13 +7,14 @@ import type {
   EngineStatus,
   Exclusion,
   ExportResult,
-  FormatInfo,
+  Formats,
   ImportSummary,
   Item,
   ItemDetail,
   ItemStatus,
   ModelInfo,
   RpcError,
+  ScreenshotStatus,
   SearchResponse,
   SourceType,
   StorageUsage,
@@ -65,7 +66,7 @@ export const engine = {
   status: () => call<EngineStatus>("status"),
   search: (query: string, filters: SearchFilters = {}) =>
     call<SearchResponse>("search", { query, filters }),
-  formats: () => call<{ documents: FormatInfo[] }>("formats.list"),
+  formats: () => call<Formats>("formats.list"),
   listItems: (status?: ItemStatus[], limit = 100, offset = 0) =>
     call<{ items: Item[]; counts: Partial<Record<ItemStatus, number>> }>("items.list", {
       ...(status ? { status } : {}),
@@ -116,6 +117,10 @@ export const engine = {
   storageUsage: () => call<StorageUsage>("storage.usage"),
   exportData: () => command<ExportResult>("export_data"),
   pauseShortcut: () => command<{ shortcut: string; registered: boolean }>("pause_shortcut"),
+  screenshotStatus: () => command<ScreenshotStatus>("screenshot_status"),
+  requestScreenPermission: () => command<boolean>("request_screen_permission"),
+  openScreenPermissionSettings: () => command<null>("open_screen_permission_settings"),
+  itemPreview: (itemId: string) => command<string | null>("item_preview", { itemId }),
 };
 
 export interface EngineNotification {

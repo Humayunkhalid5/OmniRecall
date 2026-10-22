@@ -8,7 +8,11 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::engine::{EngineState, RpcError};
+use crate::screenshot::ScreenshotStatus;
 use crate::AppState;
+
+/// Largest preview handed to the UI; thumbnails are far smaller.
+const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Engine methods the UI may call with its own parameters. Anything that
 /// takes a filesystem path is absent and handled by a dedicated command
@@ -114,6 +118,10 @@ pub async fn import_files(app: AppHandle, state: State<'_, AppState>) -> Result<
                     "pdf", "docx",
                 ],
             )
+            .add_filter(
+                "Images (text is read with OCR)",
+                &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"],
+            )
             .blocking_pick_files()
     })
     .await
@@ -184,6 +192,15 @@ pub async fn open_item_source(
         .request("items.get", json!({ "item_id": item_id }))
         .await?;
     let source_type = detail["item"]["source_type"].as_str().unwrap_or_default();
+    if source_type == "screenshot" {
+        let path = owned_media(&state, &detail["item"], false).ok_or_else(|| {
+            RpcError::local("media_missing", "The screenshot image is no longer kept")
+        })?;
+        return app
+            .opener()
+            .open_path(path.to_string_lossy(), None::<&str>)
+            .map_err(|_| RpcError::local("open_failed", "The image could not be opened"));
+    }
     let uri = detail["item"]["source_uri"].as_str().unwrap_or_default();
     if source_type != "file" || uri.is_empty() {
         return Err(RpcError::local(
@@ -201,6 +218,91 @@ pub async fn open_item_source(
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(|_| RpcError::local("open_failed", "The file could not be opened"))
+}
+
+/// The app-owned media file (or its thumbnail) of an item, only if it resolves
+/// inside the media folder. The relative path comes from the engine's record.
+fn owned_media(state: &AppState, item: &Value, thumbnail: bool) -> Option<PathBuf> {
+    if item["media_status"].as_str() != Some("present") {
+        return None;
+    }
+    let uri = item["media_uri"].as_str()?;
+    let root = state.data_dir.join("media").canonicalize().ok()?;
+    let mut path = root.join(uri);
+    if thumbnail {
+        let stem = path.file_stem()?.to_string_lossy().into_owned();
+        path = path.with_file_name(format!("{stem}.thumb.webp"));
+    }
+    let resolved = path.canonicalize().ok()?;
+    (resolved.starts_with(&root) && resolved.is_file()).then_some(resolved)
+}
+
+/// A screenshot's preview as a data URL, or null when the image is not kept.
+#[tauri::command]
+pub async fn item_preview(
+    state: State<'_, AppState>,
+    item_id: String,
+) -> Result<Option<String>, RpcError> {
+    use base64::Engine as _;
+
+    let detail = state
+        .engine
+        .request("items.get", json!({ "item_id": item_id }))
+        .await?;
+    let item = &detail["item"];
+    if item["source_type"].as_str() != Some("screenshot") {
+        return Ok(None);
+    }
+    let (path, mime) = match owned_media(&state, item, true) {
+        Some(thumb) => (thumb, "image/webp"),
+        None => match owned_media(&state, item, false) {
+            Some(full) => (full, "image/png"),
+            None => return Ok(None),
+        },
+    };
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> Option<Vec<u8>> {
+        let size = std::fs::metadata(&path).ok()?.len();
+        (size <= MAX_PREVIEW_BYTES).then(|| std::fs::read(&path).ok())?
+    })
+    .await
+    .ok()
+    .flatten();
+    Ok(bytes.map(|b| {
+        format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(b)
+        )
+    }))
+}
+
+#[tauri::command]
+pub fn screenshot_status(state: State<'_, AppState>) -> ScreenshotStatus {
+    state.screenshots.status()
+}
+
+/// Ask the OS for screen-capture permission (macOS); a no-op elsewhere.
+#[tauri::command]
+pub async fn request_screen_permission() -> bool {
+    tauri::async_runtime::spawn_blocking(crate::screen::request_permission)
+        .await
+        .unwrap_or(false)
+}
+
+/// Open the OS privacy page where screen-capture permission is changed.
+#[tauri::command]
+pub fn open_screen_permission_settings(app: AppHandle) -> Result<(), RpcError> {
+    if !cfg!(target_os = "macos") {
+        return Err(RpcError::local(
+            "not_applicable",
+            "This system has no screen-capture permission setting",
+        ));
+    }
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+            None::<&str>,
+        )
+        .map_err(|_| RpcError::local("open_failed", "System Settings could not be opened"))
 }
 
 #[tauri::command]
@@ -284,6 +386,9 @@ mod tests {
             "export.create",
             "exclusions.add_path",
             "capture.clipboard",
+            "capture.screenshot",
+            "capture.screenshot_check",
+            "capture.screenshot_skip",
             "anything",
         ] {
             assert!(!ui_may_call(method), "{method} must not be UI-callable");

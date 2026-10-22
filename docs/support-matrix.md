@@ -22,3 +22,14 @@ When the source app is unknown and any app exclusion exists, the copy is dropped
 | Linux | AppIndicator (libayatana-appindicator); needs a StatusNotifier host, which GNOME provides only through an extension | X11: verified on Xvfb. Wayland: global shortcuts are generally unavailable, and Settings says so |
 
 Without a tray host, the window header remains the capture indicator, and closing the window quits the app (capture stops) instead of hiding it.
+
+## Screenshot capture (Phase 4)
+
+| Platform | Capture | Permission | Lock / inactivity | Own window and app exclusions | Status |
+|---|---|---|---|---|---|
+| Windows 10/11 | `xcap` (GDI), every monitor in physical pixels with its scale factor | None needed | Lock: the input desktop cannot be opened. Idle: `GetLastInputInfo` | Foreground window's process | CI build. Remote Desktop sessions and secure desktops (UAC) are not tested; a failed capture is counted as `capture_failed` |
+| macOS 13+ | `xcap` (CoreGraphics), every display | Screen Recording. Settings shows a notice with **Ask for permission** and **Open System Settings**; a revoked permission is detected before every capture, and nothing is taken until it is granted again | Lock: `CGSSessionScreenIsLocked`. Idle: `CGEventSourceSecondsSinceLastEventType` | Frontmost application | CI build |
+| Linux X11 | `x11rb`: one image per RandR monitor (falls back to the whole screen) | None | Screen saver active counts as locked; idle from the ScreenSaver extension. Lockers that do not use the extension are covered by the inactivity pause | `_NET_ACTIVE_WINDOW`; needs a window manager | Verified on Xvfb (1280x800, no window manager): capture, OCR, search, preview, pause shortcut, idle pause, fail-closed app exclusion, sensitive-text drop, text-only mode, and retention pruning. Without a window manager the front app is unknown, so OmniRecall's own window was captured too; on a desktop with a window manager it is skipped |
+| Linux Wayland | Not offered: the portal asks the user on every capture | n/a | n/a | n/a | The switch is disabled with an explanation (OR-015) |
+
+Scaling: frames are kept in physical pixels; the display's scale factor is stored where the OS reports it (Windows, macOS). Multiple displays: each display is captured, deduplicated, and stored separately with its display ID. Not tested: displays added or removed while capturing, mixed-DPI setups, and HDR displays.

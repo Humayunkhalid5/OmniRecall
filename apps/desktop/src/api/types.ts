@@ -9,6 +9,8 @@ export interface Item {
   source_label: string | null;
   source_uri: string | null;
   captured_at: string;
+  /** Relative to the app media folder; set while app-owned media exists. */
+  media_uri?: string | null;
   media_status: "none" | "present" | "pruned" | "deleted";
   metadata: Record<string, unknown>;
   status: ItemStatus;
@@ -131,7 +133,23 @@ export interface CaptureState {
   paused: boolean;
   capturing: boolean;
   sources: { clipboard: SourceState; screenshot: SourceState };
-  session?: { clipboard: Record<string, number> };
+  session?: { clipboard?: Record<string, number>; screenshot?: Record<string, number> };
+  screenshot?: { interval_s: number; pause_on_idle_s: number; phash_threshold: number };
+  ocr?: { available: boolean; engine: string; version: string | null };
+}
+
+export interface ScreenshotStatus {
+  /** Why periodic capture cannot run here: "wayland" or "no_display". */
+  unsupported_reason: string | null;
+  permission: "not_required" | "granted" | "denied";
+  last_error: string | null;
+  last_capture_ms: number | null;
+}
+
+export interface Formats {
+  documents: FormatInfo[];
+  images?: FormatInfo[];
+  ocr_available?: boolean;
 }
 
 export interface Exclusion {

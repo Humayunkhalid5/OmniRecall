@@ -116,3 +116,25 @@ class ExclusionRef(Params):
 
 class ExportParams(Params):
     path: str = Field(min_length=1, max_length=4096)
+
+
+class ScreenshotCheckParams(Params):
+    app: str | None = Field(default=None, max_length=256)
+    app_known: bool = False
+
+
+class ScreenshotParams(ScreenshotCheckParams):
+    # A file name in media/incoming written by the shell; validated again on use.
+    file: str = Field(pattern=r"^shot-[0-9a-f]{32}\.png$")
+    display_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
+    display_name: str | None = Field(default=None, max_length=128)
+    phash: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
+    width: int = Field(ge=1, le=100_000)
+    height: int = Field(ge=1, le=100_000)
+    scale: float | None = Field(default=None, gt=0, le=16)
+
+
+class ScreenshotSkipParams(Params):
+    reason: Literal[
+        "duplicate_image", "idle", "locked", "permission_needed", "capture_failed", "own_app"
+    ]

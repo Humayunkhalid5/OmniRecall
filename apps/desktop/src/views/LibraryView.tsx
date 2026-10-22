@@ -44,6 +44,7 @@ export function LibraryView({
   const [filter, setFilter] = useState<Filter>("all");
   const [limit, setLimit] = useState(PAGE);
   const [formats, setFormats] = useState<FormatInfo[]>([]);
+  const [ocrAvailable, setOcrAvailable] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -75,7 +76,10 @@ export function LibraryView({
   useEffect(() => {
     engine
       .formats()
-      .then((f) => setFormats(f.documents))
+      .then((f) => {
+        setFormats([...f.documents, ...(f.images ?? [])]);
+        setOcrAvailable(f.ocr_available ?? false);
+      })
       .catch(() => setFormats([]));
   }, []);
 
@@ -264,13 +268,16 @@ export function LibraryView({
           <summary>Supported formats</summary>
           <ul>
             {formats.map((f) => (
-              <li key={f.kind}>
+              <li key={`${f.kind}-${f.extensions[0]}`}>
                 {f.label} <span className="muted">({f.extensions.join(", ")})</span>
               </li>
             ))}
           </ul>
           <p className="muted">
-            Scanned PDFs without a text layer import with no text until image OCR arrives.
+            Text in images is read on this computer with Tesseract OCR (English).{" "}
+            {ocrAvailable
+              ? "Scanned PDFs without a text layer are not read yet."
+              : "Tesseract is not installed, so images cannot be imported."}
           </p>
         </details>
       )}

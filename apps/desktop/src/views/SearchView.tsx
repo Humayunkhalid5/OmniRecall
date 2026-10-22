@@ -32,6 +32,7 @@ const SOURCE_FILTERS: { value: SourceType | "all"; label: string }[] = [
   { value: "file", label: "Files" },
   { value: "text", label: "Pasted text" },
   { value: "clipboard", label: "Clipboard" },
+  { value: "screenshot", label: "Screenshots" },
 ];
 
 export function SearchView({

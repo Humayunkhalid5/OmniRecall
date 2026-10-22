@@ -35,7 +35,7 @@ class Format:
     extensions: tuple[str, ...]
 
 
-# The supported list shown in the UI. Image and audio formats join in Phases 4-5.
+# The supported list shown in the UI. Audio formats join in Phase 5.
 DOCUMENT_FORMATS: tuple[Format, ...] = (
     Format("text", "text/plain", "Plain text", (".txt", ".text", ".log")),
     Format("markdown", "text/markdown", "Markdown", (".md", ".markdown")),
@@ -51,7 +51,17 @@ DOCUMENT_FORMATS: tuple[Format, ...] = (
     ),
 )
 
-_BY_EXTENSION = {ext: fmt for fmt in DOCUMENT_FORMATS for ext in fmt.extensions}
+# Images are read with OCR (extraction/ocr.py); only the first frame is used.
+IMAGE_FORMATS: tuple[Format, ...] = (
+    Format("image", "image/png", "PNG image", (".png",)),
+    Format("image", "image/jpeg", "JPEG image", (".jpg", ".jpeg")),
+    Format("image", "image/webp", "WebP image", (".webp",)),
+    Format("image", "image/bmp", "BMP image", (".bmp",)),
+    Format("image", "image/tiff", "TIFF image (first page)", (".tif", ".tiff")),
+    Format("image", "image/gif", "GIF image (first frame)", (".gif",)),
+)
+
+_BY_EXTENSION = {ext: fmt for fmt in DOCUMENT_FORMATS + IMAGE_FORMATS for ext in fmt.extensions}
 
 
 def format_for(path: Path) -> Format:

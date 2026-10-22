@@ -1,0 +1,101 @@
+# Phase 4 — Images and screenshots
+
+## Task brief
+
+- **Phase:** Phase 4.
+- **Exit gate:** capture is opt-in, transparent, deduplicated, recoverable, bounded in storage, and verified on each supported OS.
+- **Acceptance criteria:**
+  - Image import with local OCR, using Tesseract (D-012). Corrupt, oversized, and textless images fail with clear codes.
+  - Screenshot capture behind its own opt-in switch, off by default (PRD §4, §7). It reuses the Phase 3 indicator, global and per-source pause, the shortcut, and app and text exclusions. It pauses on lock and on inactivity where the OS supports it, and it never captures OmniRecall itself.
+  - Perceptual-hash deduplication per display before anything is written (design §6, threshold 5 of 64 bits). The reason for each skipped frame is recorded without storing the image. Embedding is skipped when the OCR text matches the previous frame.
+  - Screenshot image retention, the media cap, and text-only mode. Text stays searchable after its image is removed.
+  - Permissions: macOS Screen Recording, detected before every capture, with a way to grant it. Linux Wayland is reported as unsupported (OR-015).
+  - Multiple displays and scaling: each display is captured and stored separately, in physical pixels, with its scale factor.
+- **Files:**
+  - Engine: `extraction/ocr.py`, `extraction/documents.py`, `capture/screenshot.py`, `ingestion/pipeline.py`, `storage/repository.py`, `app.py`, `api/schemas.py`, `settings.py`.
+  - Shell: `src-tauri/src/{screen,screenshot,commands,lib,tray}.rs`.
+  - UI: screenshot settings, text-only toggle, image preview in the item detail, screenshot search filter, image formats.
+  - Tests for each part, plus docs.
+- **Tests:**
+  - OCR accuracy on the fixture images, decompression bomb, corrupt and multi-frame images, image import end to end, and a textless image.
+  - Screenshot admission: off, paused, app exclusion, fail closed when the app is unknown, OCR missing.
+  - Intake: name and path validation, non-PNG input, identical bytes.
+  - Post-OCR drops: no text, sensitive, excluded text, same text. Each must leave no row, job, or file.
+  - Text-only mode, retention, deletion of image and thumbnail, a log scan, published watcher settings, and leftover cleanup.
+  - Shell: perceptual hash on real screenshots, the per-display filter, config bounds, and atomic private frame files.
+  - UI: switch, timing, Wayland, missing Tesseract, macOS permission, text-only mode, preview, and pruned image.
+  - Network audit, now including OCR.
+- **Privacy impact:** this phase adds the most sensitive source. Screenshots are taken only after opt-in. A frame is never taken while the screen is locked, while the user is away, while OmniRecall is in front, or while an excluded app (or an unknown app, when exclusions exist) is in front. Frames dropped after OCR leave no trace (D-028). OCR runs locally, and the text is never logged.
+- **Defaults used (design §11):**
+  - Interval 30 s, minimum 5 s.
+  - Duplicate threshold of 5.
+  - Image retention 7 days, media cap 5 GB, text-only mode off.
+  - Inactivity pause 5 minutes (added in D-030; §11 had none).
+  - Secret filter on.
+
+## End report
+
+- **Done:**
+  - **OCR adapter** (`TesseractOcr`):
+    - Limits: 100 MP and a 120 s timeout.
+    - Preparation: first frame only, EXIF rotation, transparency flattened, small images upscaled.
+    - The OCR engine and version are recorded per item.
+    - A missing binary is reported, not raised.
+  - **Image import:** PNG, JPEG, WebP, BMP, TIFF, and GIF, through the dialog, drag-and-drop, and folders. Images appear in the formats list (D-029).
+  - **Screenshot capture in the shell** (D-027):
+    - Platforms: `xcap` on Windows and macOS, `x11rb` on X11.
+    - Each display is captured separately. Frames are skipped when the screen is locked, the user is idle, macOS permission is missing, or OmniRecall is in front.
+    - Before each capture the engine runs an admission check.
+    - The 64-bit DCT perceptual hash drops unchanged frames before anything is written.
+    - Frames are handed over as PNGs in `media/incoming/` (0600, atomic rename).
+  - **Engine intake** re-checks state, exclusions, OCR, and queue room. It then validates the file name and PNG header, deduplicates by content hash, and moves the file into `media/screenshots/YYYY/MM/`.
+  - **Post-OCR review** drops frames with no text, excluded text, secret-looking text, or the same text as the last frame on that display. Same-text frames update `last_seen_at` on the earlier item. Dropped frames are removed completely, and only per-session counts remain (D-028).
+  - **Media:** a 640 px WebP thumbnail; text-only mode removes the image once it is indexed; retention and the cap prune images while keeping their text (D-030).
+  - **UI:**
+    - Settings: the screenshot switch, explaining what is skipped; a per-source pause; timing (interval and inactivity); session counts by reason; the Wayland and missing-Tesseract explanations; the macOS permission notice with **Ask for permission** and **Open System Settings**; one secret-filter switch for both sources; and the text-only toggle.
+    - Item detail: a screenshot preview (served by the shell from app-owned media only), plus app, display, "still on screen until", and OCR engine; **Open image**.
+    - Search: a "Screenshots" filter.
+    - First run: describes screenshot capture.
+- **Commands run:**
+  - Engine: `uv run ruff format --check .`, `uv run ruff check .`, and `uv run mypy` are clean (46 files). `uv run pytest -q`: 185 passed, 1 skipped. The traced network audit was also run with the real model (`OMNIRECALL_TEST_MODELS_DIR`): it passes, and it fails when the ONNX Runtime telemetry guard is removed.
+  - Shell:
+    - `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` are clean on Linux.
+    - `cargo test`: 22 passed.
+    - `cargo clippy --target x86_64-pc-windows-msvc --all-targets -- -D warnings` is clean.
+    - The macOS target cannot be checked here (no Apple SDK); CI builds it on macos-14.
+  - UI: `npm run format:check`, `npm run lint`, and `npm run typecheck` are clean. `npm test`: 28 passed, including axe checks on the screenshot settings and the screenshot detail. `npm run build`: 274 KB JS (84 KB gzip).
+  - OCR timing on real 1280x800 screens: `docs/measurements.md` Phase 4.
+- **Exit gate evidence:**
+  - Live run of the debug desktop build under Xvfb (X11, 1280x800, no window manager), with the real engine, model, and Tesseract:
+    - Screenshots were enabled explicitly and the interval set to 5 s.
+    - A terminal showing a release checklist was captured, OCR'd, and indexed in about 0.5–1.5 s.
+    - The query "when do the archive keys need rotating" found it. The detail showed the preview, the display, and "Tesseract 5.3.4", and **Open image** was offered.
+    - Unchanged screens were dropped in the shell (46 of 68 outcomes).
+    - The pause shortcut stopped capture (0 frames while paused), and resume restarted it.
+    - An app exclusion with an unknown front app refused every frame (fail closed).
+    - A terminal showing a GitHub token was dropped as `sensitive`, and the token appeared nowhere in the data folder.
+    - Text-only mode left no PNG for a new frame.
+    - Setting retention to 0 days removed every image (media folder empty), and the text stayed searchable ("which cluster does the ledger service move to" was a strong match).
+    - After 1 minute without input, frames were skipped as `idle`.
+    - The engine log held only outcome codes; no captured word, app name, or query. No ONNX Runtime telemetry files appeared.
+    - Quitting the app stopped the engine.
+  - Automated: `tests/test_screenshots.py` (20), `tests/test_ocr.py` (12), shell `screenshot.rs` and `screen.rs` tests, and `src/screenshots.test.tsx` (7).
+- **Found and fixed:**
+  - OR-023 (P0): ONNX Runtime telemetry uploads and a device ID file. Found while extending the audit; the fix was also pushed to the Phase 3 PR.
+  - OR-022: lost replies at shutdown.
+  - OR-024: pausing reset the screenshot interval.
+  - Screenshot items were labelled "screen" when the app was unknown; they are now labelled "Screenshot".
+  - The timing form was not indented under its switch.
+- **Not done or skipped:**
+  - Windows and macOS capture, permission, lock, and idle code is compiled (Windows locally; both in CI) but was not run on a real desktop. Multiple physical displays, mixed DPI, permission revoked while running, Remote Desktop, and GNOME/KDE on real hardware are untested. They move to Phase 6 hardware runs and are listed in `docs/support-matrix.md`. Per rules.md §1.6, no OS support is claimed beyond what is marked verified there.
+  - Without a window manager, the front app cannot be identified on X11, so OmniRecall's own window was captured during the Xvfb run. On desktops with a window manager it is skipped by process ID.
+  - Scanned PDFs (no text layer) are still not OCR'd; only image files are.
+  - CPU, memory, and battery cost of periodic capture on a laptop is not measured (Phase 6).
+- **Bugs:** OR-022, OR-023, and OR-024 opened and closed with regression tests. Phase 4 notes added to OR-003 and OR-015 (both still OPEN).
+- **Docs updated:**
+  - `decisions.md` D-027 to D-030.
+  - `design.md` §3, §6, §11.
+  - `measurements.md` Phase 4.
+  - `support-matrix.md` screenshots.
+  - `privacy-audit.md` screenshots and ONNX Runtime.
+  - `bugs.md`.

@@ -76,17 +76,20 @@ export function searchResponse(overrides: Partial<SearchResponse> = {}): SearchR
 export function captureState(
   clipboard: { enabled?: boolean; paused?: boolean } = {},
   paused = false,
+  screenshot: { enabled?: boolean; paused?: boolean } = {},
 ): CaptureState {
-  const enabled = clipboard.enabled ?? false;
-  const sourcePaused = enabled && (clipboard.paused ?? false);
-  const active = enabled && !sourcePaused && !paused;
+  const source = (s: { enabled?: boolean; paused?: boolean }) => {
+    const enabled = s.enabled ?? false;
+    const sourcePaused = enabled && (s.paused ?? false);
+    return { enabled, paused: sourcePaused, active: enabled && !sourcePaused && !paused };
+  };
+  const sources = { clipboard: source(clipboard), screenshot: source(screenshot) };
   return {
     paused,
-    capturing: active,
-    sources: {
-      clipboard: { enabled, paused: sourcePaused, active },
-      screenshot: { enabled: false, paused: false, active: false },
-    },
-    session: { clipboard: {} },
+    capturing: sources.clipboard.active || sources.screenshot.active,
+    sources,
+    session: { clipboard: {}, screenshot: {} },
+    screenshot: { interval_s: 30, pause_on_idle_s: 300, phash_threshold: 5 },
+    ocr: { available: true, engine: "tesseract", version: "5.3.4" },
   };
 }

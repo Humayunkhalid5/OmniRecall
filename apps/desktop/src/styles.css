@@ -610,6 +610,17 @@ table.items tr.selected {
   margin-bottom: 1rem;
 }
 
+.preview {
+  display: block;
+  max-width: 100%;
+  max-height: 22rem;
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
 .chunk {
   padding: 0.5rem 0.6rem;
   border-radius: var(--radius);
@@ -672,6 +683,10 @@ button.capture-chip {
 
 .switch-row.nested {
   padding-left: 1.25rem;
+}
+
+.limits.nested {
+  padding: 0 0 0.75rem 1.25rem;
 }
 
 .switch-label {
