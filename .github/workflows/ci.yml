@@ -24,10 +24,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.11.32"
-      - name: Install Tesseract
+      - name: Install Tesseract (and strace for the network audit on Linux)
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng; fi
+          if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng strace; fi
           if [ "$RUNNER_OS" = "macOS" ]; then brew install tesseract; fi
           if [ "$RUNNER_OS" = "Windows" ]; then choco install tesseract -y --no-progress; echo "C:\Program Files\Tesseract-OCR" >> "$GITHUB_PATH"; fi
       - run: uv sync --frozen --python 3.12

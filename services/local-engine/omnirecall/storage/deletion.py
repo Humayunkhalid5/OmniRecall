@@ -9,6 +9,7 @@ from pathlib import Path
 from omnirecall import logs
 from omnirecall.ids import utc_now
 from omnirecall.storage.db import Database
+from omnirecall.storage.media import owned_media_path, remove_media
 from omnirecall.storage.repository import Repository
 from omnirecall.storage.states import ItemStatus
 from omnirecall.storage.vectors import VectorStore
@@ -48,13 +49,7 @@ class DeletionService:
         return ItemStatus.DELETING.value
 
     def _media_path(self, media_uri: str | None) -> Path | None:
-        if not media_uri:
-            return None
-        path = (self.media_root / media_uri).resolve()
-        if not path.is_relative_to(self.media_root):
-            logs.error("media_path_outside_root", reason="refused")
-            return None
-        return path
+        return owned_media_path(self.media_root, media_uri)
 
     def process(self) -> int:
         """Run cleanup for all open tombstones. Returns how many completed."""
@@ -98,8 +93,7 @@ class DeletionService:
         for path in media_paths.values():
             if path is None:
                 continue
-            for candidate in (path, path.with_name(path.stem + ".thumb.webp")):
-                candidate.unlink(missing_ok=True)
+            remove_media(path)
         for item_id in item_ids:
             self.repo.update_tombstone(item_id, ["physical"])
         # 4. Physical removal of freed bytes.

@@ -70,6 +70,8 @@ A Rust-only backend can be reconsidered if deployment or resource measurements j
 ### Source adapters
 Every adapter returns a common `IngestionEnvelope`: stable ID, source type, capture timestamp, source label/URI, media URI or text payload, content hash, and privacy classification. Adapters must honor disabled sources and exclusion rules before persistence.
 
+- **Clipboard (Phase 3, D-023):** the shell watches the clipboard because only it can read the OS clipboard and the frontmost application. It reads nothing unless the engine reports clipboard capture as active (enabled and not paused), treats the clipboard content present when capture turns on as a baseline rather than a copy, and uses the OS change counter where one exists (Windows sequence number, macOS `changeCount`; Linux compares text). Each new copy goes to the engine's `capture.clipboard`, which re-checks capture state and applies the size limit, app and pattern exclusions, and the secret filter before anything is stored. A dropped copy leaves no item, hash, payload, or log line; only in-memory per-session counters by reason (D-022).
+
 ### Ingestion/job manager
 - Persist jobs before processing.
 - Use bounded concurrency and backpressure.
@@ -213,6 +215,8 @@ Cross-store writes to LanceDB are recorded here in the same SQLite transaction a
 - `enabled INTEGER NOT NULL DEFAULT 1`
 - `created_at TEXT NOT NULL`
 
+Rule semantics (D-025): `app` matches the frontmost application name case-insensitively, ignoring a `.exe` or `.app` suffix; while any app rule is enabled, a copy whose app cannot be determined is dropped (fail closed). `path` excludes a folder and everything under it from import and folder walks; the app data folder is always excluded. `pattern` is a literal, case-insensitive text match on the copied text. Folder rules are added only through the shell's folder dialog.
+
 ### `settings`
 - `key TEXT PRIMARY KEY`
 - `value_json TEXT NOT NULL` (validated against the settings model; defaults in §11)
@@ -346,5 +350,7 @@ Starting defaults, all configurable. They are tuned only with measurements from 
 - `manifest.json`: app version, schema version, export timestamp, item count, and SHA-256 checksum of every other file.
 - `items.jsonl` and `chunks.jsonl`: one JSON record per line, using the §5 fields.
 - `media/`: app-owned media that still exists.
+
+Details (D-026): the export is built from one read snapshot of the database, so it is consistent while indexing continues. It is written to `<name>.zip.partial` and renamed when complete. The target must be an absolute `.zip` path outside the data folder, chosen in the shell's save dialog; the UI cannot pass a path. `manifest.json` carries `format_version: 1`.
 
 Vectors are not exported. Restore (P1) re-imports items and chunks and rebuilds vectors with the active embedding model, which keeps exports small and independent of model versions.

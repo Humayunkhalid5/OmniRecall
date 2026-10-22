@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,6 +48,8 @@ class IngestionService:
         self.media_root = media_root
         self.settings = settings
         self._wake = wake
+        # Set by the engine from the user's folder exclusions.
+        self.is_excluded: Callable[[Path], bool] = lambda _path: False
 
     def _check_capacity(self) -> None:
         if self.repo.active_job_count() >= self.settings.queue_capacity:
@@ -105,8 +108,11 @@ class IngestionService:
             except (OSError, RuntimeError):
                 summary.rejected.append({"name": path.name, "code": "not_found"})
                 continue
+            if self.is_excluded(resolved):
+                summary.rejected.append({"name": path.name, "code": "excluded_path"})
+                continue
             if resolved.is_dir():
-                files.extend(_walk_supported(resolved, summary))
+                files.extend(_walk_supported(resolved, summary, self.is_excluded))
             elif resolved.is_file():
                 files.append(resolved)
             else:
@@ -164,10 +170,20 @@ def _default_label(text: str) -> str:
     return first_line[:80] + ("…" if len(first_line) > 80 else "")
 
 
-def _walk_supported(root: Path, summary: ImportSummary) -> list[Path]:
+def _walk_supported(
+    root: Path, summary: ImportSummary, is_excluded: Callable[[Path], bool]
+) -> list[Path]:
     found: list[Path] = []
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        kept = []
+        for d in sorted(dirnames):
+            if d.startswith("."):
+                continue
+            if is_excluded(Path(directory) / d):
+                summary.rejected.append({"name": d, "code": "excluded_path"})
+                continue
+            kept.append(d)
+        dirnames[:] = kept
         for name in sorted(filenames):
             if name.startswith("."):
                 continue

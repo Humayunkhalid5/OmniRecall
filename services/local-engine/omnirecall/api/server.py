@@ -37,6 +37,7 @@ class RpcServer:
         self._stdin = stdin
         self._stdout = stdout
         self._write_lock = threading.Lock()
+        self._interrupted = False
         self._handlers: dict[str, Handler] = {}
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rpc")
         self._stopping = threading.Event()
@@ -60,6 +61,14 @@ class RpcServer:
 
     def request_stop(self) -> None:
         self._stopping.set()
+
+    def _interrupt_once(self) -> None:
+        """Wake the blocking read once; later requests finishing must not signal again."""
+        with self._write_lock:
+            if self._interrupted or self.interrupt is None:
+                return
+            self._interrupted = True
+        self.interrupt()
 
     def _write(self, message: dict[str, Any]) -> None:
         data = protocol.encode(message)
@@ -86,8 +95,8 @@ class RpcServer:
             result = handler(request.params)
             if request.id is not None:
                 self._write(protocol.result_message(request.id, result))
-            if self._stopping.is_set() and self.interrupt is not None:
-                self.interrupt()
+            if self._stopping.is_set():
+                self._interrupt_once()
         except EngineError as exc:
             code = protocol.INVALID_PARAMS if exc.code == "invalid_params" else protocol.APP_ERROR
             if exc.code == "protocol_mismatch":
@@ -190,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     # can download files. The engine never asks them to; this forbids it.
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["ORT_DISABLE_TELEMETRY"] = "1"  # ONNX Runtime uploads telemetry otherwise (OR-023)
     args = build_arg_parser().parse_args(argv)
     data_dir = Path(args.data_dir).expanduser().resolve()
     logs.configure(data_dir / "logs", args.log_level)
@@ -204,7 +214,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     engine.register(server)
 
+    signalled = threading.Event()
+
     def _on_signal(signum: int, _frame: object) -> None:
+        if signalled.is_set():
+            return  # already unwinding; a second exception would break shutdown
+        signalled.set()
         logs.info("signal", code=str(signum))
         server.request_stop()
         # Interrupt the blocking stdin read; serve() runs shutdown in finally.

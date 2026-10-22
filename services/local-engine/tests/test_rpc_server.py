@@ -173,3 +173,22 @@ def test_engine_opens_no_network_port(tmp_path):
     finally:
         proc.kill()
         proc.wait()
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.skipif(os.name == "nt", reason="the shell closes stdin after shutdown on Windows")
+def test_requests_in_flight_at_shutdown_are_answered(tmp_path):
+    """OR-022: a request finishing after `shutdown` must not signal the engine again."""
+    proc = spawn_engine(tmp_path)
+    assert proc.stdin and proc.stdout
+    proc.stdout.readline()
+    enable = {"source_type": "clipboard", "enabled": True}
+    batch = b"".join(req(i, "capture.set_source", enable) for i in range(1, 7))
+    proc.stdin.write(batch + req(7, "shutdown", {}))
+    proc.stdin.flush()
+    # stdin stays open; the little output fits in the pipe buffers.
+    assert proc.wait(timeout=30) == 0
+    assert proc.stderr
+    replies = [json.loads(line) for line in proc.stdout.read().splitlines()]
+    assert {r.get("id") for r in replies} >= set(range(1, 8))
+    assert b"Traceback" not in proc.stderr.read()

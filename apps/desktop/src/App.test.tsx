@@ -4,25 +4,9 @@ import axe from "axe-core";
 import { beforeEach, expect, test } from "vitest";
 import type { SearchResult } from "./api/types";
 import { App } from "./App";
+import { engineRunning } from "./test/engineMock";
 import { ITEM_ID, item, searchResponse, status } from "./test/fixtures";
 import { shell } from "./test/tauri";
-
-function engineRunning() {
-  shell.commands.set("engine_state", () => ({ state: "running", pid: 42 }));
-  shell.methods.set("status", () => status());
-  shell.methods.set("formats.list", () => ({
-    documents: [{ kind: "pdf", label: "PDF (text layer only)", extensions: [".pdf"] }],
-  }));
-  shell.methods.set("items.list", () => ({ items: [item()], counts: { indexed: 1 } }));
-  shell.methods.set("items.get", () => ({
-    item: item(),
-    source_exists: true,
-    chunk_count: 1,
-    chunks: [
-      { id: "c1", ordinal: 0, text: "error E0382: borrow of moved value", start: 0, end: 34 },
-    ],
-  }));
-}
 
 async function audit(container: HTMLElement) {
   // Colour contrast needs real layout, which jsdom does not provide.
@@ -244,7 +228,12 @@ test("settings show model setup, storage, the encryption notice, and guarded cle
     ],
   }));
   shell.methods.set("settings.get", () => ({
-    settings: { max_file_bytes: 104_857_600, max_pdf_pages: 500, results_shown: 20 },
+    settings: {
+      first_run_completed: true,
+      max_file_bytes: 104_857_600,
+      max_pdf_pages: 500,
+      results_shown: 20,
+    },
     defaults: {},
   }));
   const downloads: unknown[] = [];

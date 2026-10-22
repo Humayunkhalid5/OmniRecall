@@ -621,3 +621,125 @@ table.items tr.selected {
 .show-weak {
   margin-bottom: 1rem;
 }
+
+/* Capture indicator */
+.capture-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+  padding: 0.2rem 0.3rem 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+button.capture-chip {
+  padding: 0.25rem 0.7rem;
+  color: var(--muted);
+}
+
+.capture-chip button {
+  padding: 0.15rem 0.7rem;
+  border-radius: 999px;
+}
+
+.capture-on {
+  border-color: var(--ok);
+}
+
+.capture-paused {
+  border-color: var(--warn);
+}
+
+.capture-chip + .engine-badge {
+  margin-left: 0;
+}
+
+.dot-off {
+  background: var(--muted);
+}
+
+/* Settings switches */
+.switch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.switch-row.nested {
+  padding-left: 1.25rem;
+}
+
+.switch-label {
+  font-weight: 600;
+}
+
+input[type="checkbox"][role="switch"] {
+  width: 2.4rem;
+  height: 1.3rem;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.exclusion-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.exclusion-form input {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.exclusions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exclusions li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.rule-value {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.panel h3 {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+/* First run */
+.first-run {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem;
+}
+
+.first-run h1 {
+  font-size: 1.6rem;
+}
+
+.first-run .lead {
+  font-size: 1.05rem;
+}
+
+.first-run section {
+  margin: 1.25rem 0;
+}
+
+.first-run li {
+  margin-bottom: 0.4rem;
+}

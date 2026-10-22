@@ -120,3 +120,40 @@ export interface FormatInfo {
   label: string;
   extensions: string[];
 }
+
+export interface SourceState {
+  enabled: boolean;
+  paused: boolean;
+  active: boolean;
+}
+
+export interface CaptureState {
+  paused: boolean;
+  capturing: boolean;
+  sources: { clipboard: SourceState; screenshot: SourceState };
+  session?: { clipboard: Record<string, number> };
+}
+
+export interface Exclusion {
+  id: string;
+  rule_type: "app" | "path" | "pattern";
+  rule_value: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface StorageUsage {
+  media_bytes: number;
+  media_cap_bytes: number;
+  screenshot_retention_days: number;
+  text_only_mode: boolean;
+}
+
+export interface ExportResult {
+  path?: string;
+  item_count?: number;
+  chunk_count?: number;
+  media_count?: number;
+  bytes?: number;
+  cancelled?: boolean;
+}

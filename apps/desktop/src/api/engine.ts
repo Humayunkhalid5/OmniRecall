@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  CaptureState,
   ConsistencyReport,
   EngineState,
   EngineStatus,
+  Exclusion,
+  ExportResult,
   FormatInfo,
   ImportSummary,
   Item,
@@ -13,6 +16,7 @@ import type {
   RpcError,
   SearchResponse,
   SourceType,
+  StorageUsage,
 } from "./types";
 
 export class EngineCallError extends Error {
@@ -92,6 +96,26 @@ export const engine = {
   importFolder: () => command<ImportSummary>("import_folder"),
   openSource: (itemId: string) => command<null>("open_item_source", { itemId }),
   revealDataDir: () => command<null>("reveal_data_dir"),
+  captureState: () => call<CaptureState>("capture.state"),
+  setSource: (
+    sourceType: "clipboard" | "screenshot",
+    change: { enabled?: boolean; paused?: boolean },
+  ) => call<CaptureState>("capture.set_source", { source_type: sourceType, ...change }),
+  pauseCapture: (paused: boolean) => call<CaptureState>("capture.pause", { paused }),
+  exclusions: () => call<{ exclusions: Exclusion[] }>("exclusions.list"),
+  addExclusion: (ruleType: "app" | "pattern", value: string) =>
+    call<{ id: string; exclusions: Exclusion[] }>("exclusions.add", {
+      rule_type: ruleType,
+      rule_value: value,
+    }),
+  setExclusionEnabled: (id: string, enabled: boolean) =>
+    call<{ exclusions: Exclusion[] }>("exclusions.update", { id, enabled }),
+  removeExclusion: (id: string) => call<{ exclusions: Exclusion[] }>("exclusions.remove", { id }),
+  addFolderExclusion: () =>
+    command<{ exclusions?: Exclusion[]; cancelled?: boolean }>("add_folder_exclusion"),
+  storageUsage: () => call<StorageUsage>("storage.usage"),
+  exportData: () => command<ExportResult>("export_data"),
+  pauseShortcut: () => command<{ shortcut: string; registered: boolean }>("pause_shortcut"),
 };
 
 export interface EngineNotification {
