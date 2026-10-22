@@ -1,0 +1,393 @@
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { engine, EngineCallError } from "../api/engine";
+import type { FormatInfo, ImportSummary, Item, ItemStatus } from "../api/types";
+import { Notice } from "../components/Notice";
+import { describeError, formatLocalTime, sourceLabels, statusLabels } from "../lib/format";
+
+interface Props {
+  selectedId: string | null;
+  onSelect: (itemId: string) => void;
+  refreshKey: number;
+  lastImport: ImportSummary | null;
+  onImported: (summary: ImportSummary) => void;
+  onChanged: () => void;
+}
+
+type Filter = "all" | "active" | "failed";
+
+const FILTERS: { value: Filter; label: string; status?: ItemStatus[] }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "In progress", status: ["queued", "processing", "deleting"] },
+  { value: "failed", label: "Needs attention", status: ["failed", "skipped"] },
+];
+
+const PAGE = 100;
+
+export function summarizeImport(summary: ImportSummary): string {
+  const parts: string[] = [];
+  if (summary.queued) parts.push(`${summary.queued} queued for indexing`);
+  if (summary.duplicates) parts.push(`${summary.duplicates} already imported`);
+  if (summary.rejected.length) parts.push(`${summary.rejected.length} not imported`);
+  return parts.length ? `${parts.join(", ")}.` : "Nothing was imported.";
+}
+
+export function LibraryView({
+  selectedId,
+  onSelect,
+  refreshKey,
+  lastImport,
+  onImported,
+  onChanged,
+}: Props) {
+  const [items, setItems] = useState<Item[]>([]);
+  const [counts, setCounts] = useState<Partial<Record<ItemStatus, number>>>({});
+  const [filter, setFilter] = useState<Filter>("all");
+  const [limit, setLimit] = useState(PAGE);
+  const [formats, setFormats] = useState<FormatInfo[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+
+  const load = useCallback(
+    () =>
+      engine
+        .listItems(FILTERS.find((f) => f.value === filter)?.status, limit)
+        .then((result) => {
+          setItems(result.items);
+          setCounts(result.counts);
+        })
+        .catch((e: EngineCallError) => setError(e.message)),
+    [filter, limit],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load, refreshKey]);
+
+  // Keep the list fresh while anything is still moving through the pipeline.
+  const moving = items.some((i) => ["queued", "processing", "deleting"].includes(i.status));
+  useEffect(() => {
+    if (!moving) return;
+    const timer = setInterval(() => void load(), 1500);
+    return () => clearInterval(timer);
+  }, [moving, load]);
+
+  useEffect(() => {
+    engine
+      .formats()
+      .then((f) => setFormats(f.documents))
+      .catch(() => setFormats([]));
+  }, []);
+
+  const runImport = async (kind: "files" | "folder") => {
+    setBusy(kind);
+    setError(null);
+    try {
+      const summary = kind === "files" ? await engine.importFiles() : await engine.importFolder();
+      if (!summary.cancelled) onImported(summary);
+    } catch (e) {
+      setError((e as EngineCallError).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const act = async (item: Item, action: "retry" | "cancel") => {
+    setBusy(item.id);
+    setError(null);
+    try {
+      if (action === "retry") await engine.retryItem(item.id);
+      else await engine.cancelItem(item.id);
+      onChanged();
+    } catch (e) {
+      setError((e as EngineCallError).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const total = Object.entries(counts)
+    .filter(([status]) => status !== "deleted")
+    .reduce((sum, [, n]) => sum + (n ?? 0), 0);
+  const inProgress = (counts.queued ?? 0) + (counts.processing ?? 0);
+  const needsAttention = (counts.failed ?? 0) + (counts.skipped ?? 0);
+
+  return (
+    <section className="library" aria-label="Library">
+      <div className="toolbar">
+        <button
+          type="button"
+          className="primary"
+          onClick={() => void runImport("files")}
+          disabled={busy !== null}
+        >
+          {busy === "files" ? "Choosing…" : "Import files"}
+        </button>
+        <button type="button" onClick={() => void runImport("folder")} disabled={busy !== null}>
+          {busy === "folder" ? "Choosing…" : "Import folder"}
+        </button>
+        <button type="button" onClick={() => setPasteOpen(true)} disabled={busy !== null}>
+          Paste text
+        </button>
+      </div>
+      <p className="muted drop-hint">You can also drop files or folders onto this window.</p>
+
+      {lastImport && (
+        <Notice tone={lastImport.rejected.length ? "warning" : "success"} title="Import">
+          {summarizeImport(lastImport)}
+          {lastImport.rejected.length > 0 && (
+            <ul className="rejected">
+              {lastImport.rejected.slice(0, 10).map((r) => (
+                <li key={r.name}>
+                  {r.name}: {describeError(r.code)}
+                </li>
+              ))}
+              {lastImport.rejected.length > 10 && (
+                <li>and {lastImport.rejected.length - 10} more</li>
+              )}
+            </ul>
+          )}
+        </Notice>
+      )}
+      {error && <Notice tone="error">{error}</Notice>}
+
+      <dl className="counts" aria-label="Index progress">
+        <div>
+          <dt>Items</dt>
+          <dd>{total}</dd>
+        </div>
+        <div>
+          <dt>Indexed</dt>
+          <dd>{counts.indexed ?? 0}</dd>
+        </div>
+        <div>
+          <dt>In progress</dt>
+          <dd>{inProgress}</dd>
+        </div>
+        <div>
+          <dt>Needs attention</dt>
+          <dd>{needsAttention}</dd>
+        </div>
+      </dl>
+
+      <div className="segmented" role="group" aria-label="Show">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            aria-pressed={filter === f.value}
+            onClick={() => {
+              setFilter(f.value);
+              setLimit(PAGE);
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {items.length === 0 ? (
+        <div className="empty">
+          <p>{filter === "all" ? "Nothing imported yet." : "No items in this view."}</p>
+        </div>
+      ) : (
+        <table className="items">
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              <th scope="col">Source</th>
+              <th scope="col">Added</th>
+              <th scope="col">Status</th>
+              <th scope="col">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className={selectedId === item.id ? "selected" : undefined}>
+                <td>
+                  <button type="button" className="link" onClick={() => onSelect(item.id)}>
+                    {item.source_label || sourceLabels[item.source_type]}
+                  </button>
+                </td>
+                <td>{sourceLabels[item.source_type]}</td>
+                <td>
+                  <time dateTime={item.captured_at}>{formatLocalTime(item.captured_at)}</time>
+                </td>
+                <td>
+                  <span className={`status status-${item.status}`}>
+                    {statusLabels[item.status]}
+                  </span>
+                  {item.status === "failed" && (
+                    <span className="status-reason">{describeError(item.error_code)}</span>
+                  )}
+                  {item.status === "skipped" && (
+                    <span className="status-reason">{describeError(item.skip_reason)}</span>
+                  )}
+                </td>
+                <td>
+                  <div className="row-actions">
+                    {item.status === "failed" && item.error_code !== "source_missing" && (
+                      <button
+                        type="button"
+                        onClick={() => void act(item, "retry")}
+                        disabled={busy === item.id}
+                      >
+                        Retry
+                      </button>
+                    )}
+                    {(item.status === "queued" || item.status === "processing") && (
+                      <button
+                        type="button"
+                        onClick={() => void act(item, "cancel")}
+                        disabled={busy === item.id}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {items.length >= limit && (
+        <button type="button" onClick={() => setLimit((n) => n + PAGE)}>
+          Show more
+        </button>
+      )}
+
+      {formats.length > 0 && (
+        <details className="formats">
+          <summary>Supported formats</summary>
+          <ul>
+            {formats.map((f) => (
+              <li key={f.kind}>
+                {f.label} <span className="muted">({f.extensions.join(", ")})</span>
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            Scanned PDFs without a text layer import with no text until image OCR arrives.
+          </p>
+        </details>
+      )}
+
+      <PasteDialog
+        open={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        onImported={(created) => {
+          setPasteOpen(false);
+          onImported({
+            queued: created ? 1 : 0,
+            duplicates: created ? 0 : 1,
+            rejected: [],
+            item_ids: [],
+          });
+        }}
+      />
+    </section>
+  );
+}
+
+interface PasteProps {
+  open: boolean;
+  onClose: () => void;
+  onImported: (created: boolean) => void;
+}
+
+const MAX_PASTE_CHARS = 1_000_000;
+
+function PasteDialog({ open, onClose, onImported }: PasteProps) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const [text, setText] = useState("");
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const close = () => {
+    setText("");
+    setLabel("");
+    setError(null);
+    onClose();
+  };
+
+  const submit = async () => {
+    if (!text.trim()) {
+      setError("Paste or type some text first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await engine.importText(text, label.trim() || undefined);
+      setText("");
+      setLabel("");
+      onImported(result.created);
+    } catch (e) {
+      setError((e as EngineCallError).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <dialog
+      ref={ref}
+      className="dialog wide"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <h2 id={titleId}>Paste text</h2>
+        <label htmlFor="paste-label">Title (optional)</label>
+        <input
+          id="paste-label"
+          type="text"
+          maxLength={200}
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+        />
+        <label htmlFor="paste-text">Text</label>
+        <textarea
+          id="paste-text"
+          rows={10}
+          maxLength={MAX_PASTE_CHARS}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+        />
+        {error && <Notice tone="error">{error}</Notice>}
+        <div className="dialog-actions">
+          <button type="button" onClick={close} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={busy}>
+            {busy ? "Adding…" : "Add to index"}
+          </button>
+        </div>
+      </form>
+    </dialog>
+  );
+}

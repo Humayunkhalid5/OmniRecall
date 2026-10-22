@@ -43,3 +43,34 @@ Command: `python scripts/spike_embeddings.py <models>/all-minilm-l6-v2`.
 
 ### Transcription
 `pywhispercpp` 1.5.1 loads its native whisper.cpp build (AVX2, OpenMP). The `ggml-base` model could not be downloaded from this build environment (huggingface.co is blocked by its network policy), so accuracy and speed are **not yet measured**. Tracked for Phase 5.
+
+## Phase 2 (2026-10-21, REF-CI-LINUX)
+
+### Relevance baseline (evaluation corpus: 44 documents, 52 labeled queries, 6 non-English)
+| Mode | recall@10 | MRR | Notes |
+|---|---|---|---|
+| Hybrid (FTS5 + vector, RRF k = 60, stopwords removed from the keyword query) | 0.982 | 0.958 | English 0.980 / 0.953; non-English 1.000 / 1.000; exact-identifier queries 1.000 / 1.000 |
+| Vector only | 0.963 | 0.962 | Exact-identifier queries 0.667: misses `E0382` entirely |
+| Keyword only | 0.901 | 0.881 | Paraphrased queries 0.895; four queries with no relevant result |
+
+Hybrid before the stopword filter scored lower, because words such as "to" flooded the keyword ranks (D-020).
+
+Relevance label calibration on the same run: results labeled **strong** were relevant 100% of the time (n = 44); **possible** (moderate) 50% (n = 8). Query latency on this small index: median 7.4 ms, p95 8.8 ms (re-run at the end of the phase; the first run measured about 12 ms median).
+
+Command: `uv run --project services/local-engine python scripts/eval_relevance.py <data_dir_with_models> --mode hybrid` (also `--mode vector`, `--mode keyword`).
+
+### Search latency at 10,000 chunks
+| Metric | Result |
+|---|---|
+| Index build (10,000 synthetic 500-char chunks, real MiniLM model, until every item is `indexed`) | 141 s |
+| Search median / p95 (hybrid, 200 queries) | 20.3 ms / 23.3 ms |
+| SQLite database (with FTS5) | 24.9 MB |
+| LanceDB vectors (after compaction) | 17 MB |
+| Peak engine RSS during bulk indexing | 743 MB |
+
+The first build took far longer (about 4.5 items/s) because every item wrote its own LanceDB version. Batching vector writes across items in a dedicated worker and compacting every 64 writes fixed it (D-019).
+
+Command: `uv run --project services/local-engine python scripts/bench_search.py <data_dir_with_models> --chunks 10000`.
+
+### Model setup
+Downloading all-MiniLM-L6-v2 through `ModelManager` (HTTPS, archive SHA-256 and per-file SHA-256 verified, staged then renamed): 2.4 s for 83 MB on this machine's network.

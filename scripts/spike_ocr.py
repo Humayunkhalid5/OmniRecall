@@ -65,7 +65,9 @@ def main() -> None:
             score = cer(truth, text)
             total_cer += score
             print(f"{name:10s} {path.stem:22s} CER={score:.3f} time={seconds * 1000:.0f}ms")
-        print(f"{name:10s} MEAN CER={total_cer / len(images):.3f} peak_rss_after={rss_mb():.0f}MB (before {before:.0f}MB)")
+        print(
+            f"{name:10s} MEAN CER={total_cer / len(images):.3f} peak_rss_after={rss_mb():.0f}MB (before {before:.0f}MB)"
+        )
 
 
 if __name__ == "__main__":

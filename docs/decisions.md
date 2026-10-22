@@ -138,3 +138,24 @@
 - **Reason:** keeps SQLite authoritative (rules §2.3) and makes every crash point recoverable (OR-004).
 - **Docs updated:** `docs/reports/phase-1.md`.
 - **Replaces:** none.
+
+### D-019 — Vector writes in a batching worker
+- **Date:** 2026-10-21
+- **Decision:** a pipeline job extracts and chunks, then commits chunks, FTS rows, and outbox entries in one SQLite transaction and leaves the item `processing`. A dedicated vector worker drains the outbox in batches across items (up to 256 entries, embedded 32 at a time through the embedding cache), writes LanceDB, and only then marks each fully written item `indexed`. LanceDB is compacted and old versions cleaned every 64 writes.
+- **Reason:** one LanceDB write per item produced thousands of versions and about 4.5 items/s; batching gave a 10,000-chunk build in 141 s (`docs/measurements.md`). SQLite stays authoritative and every crash point is still recovered by outbox replay.
+- **Docs updated:** `docs/measurements.md`, `docs/reports/phase-2.md`.
+- **Replaces:** the "embeds first" ordering in D-018. The rest of D-018 (startup replay, side-table rebuild) stands.
+
+### D-020 — Keyword query construction and relevance labels
+- **Date:** 2026-10-21
+- **Decision:** the FTS5 query quotes each term and ORs them, after dropping a fixed English stopword list (unless the query is only stopwords). Results are labeled **strong** when cosine similarity is at least 0.45, or at least 0.30 with a keyword hit; **possible** when similarity is at least 0.30 or there is a keyword hit; otherwise **weak**. The response sets `no_strong_match` when no result is strong, and the UI then says no strong match was found.
+- **Reason:** quoting neutralizes FTS5 operators in user text; stopwords otherwise dominate rank fusion. The thresholds were calibrated on the Phase 2 evaluation run (strong was correct 44/44). Labels describe evidence, not certainty (rules §5.7).
+- **Docs updated:** `docs/measurements.md`.
+- **Replaces:** none.
+
+### D-021 — Phase 2 document formats
+- **Date:** 2026-10-21
+- **Decision:** supported formats are plain text (`.txt`, `.text`, `.log`), Markdown, CSV/TSV, JSON (flattened to `path: value` lines), HTML (visible text only; scripts, styles, and head skipped), PDF (text layer only, encrypted PDFs refused, 500-page limit), and Word `.docx` (paragraphs and tables). Files with NUL bytes in the first 4 KB (other than UTF-16 with a BOM) are refused as binary. The UI shows this list from `formats.list`; images and audio join in Phases 4 and 5.
+- **Reason:** PRD §5 requires a declared, tested format list. Pure-Python extractors (`pypdf`, `python-docx`, stdlib) execute no embedded content (rules §4.4).
+- **Docs updated:** `docs/reports/phase-2.md`.
+- **Replaces:** none.

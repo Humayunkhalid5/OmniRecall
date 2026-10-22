@@ -149,6 +149,18 @@ def test_real_engine_stops_on_sigterm(tmp_path):
     assert proc.wait(timeout=30) == 0
 
 
+@pytest.mark.timeout(60)
+@pytest.mark.skipif(os.name == "nt", reason="the shell closes stdin after shutdown on Windows")
+def test_real_engine_exits_on_shutdown_request_with_stdin_open(tmp_path):
+    proc = spawn_engine(tmp_path)
+    assert proc.stdin and proc.stdout
+    proc.stdout.readline()
+    proc.stdin.write(req(1, "shutdown", {}))
+    proc.stdin.flush()
+    assert json.loads(proc.stdout.readline())["result"] == {"stopping": True}
+    assert proc.wait(timeout=30) == 0  # stdin deliberately left open
+
+
 def test_engine_opens_no_network_port(tmp_path):
     """The engine must not listen on any socket (D-003)."""
     psutil = pytest.importorskip("psutil")

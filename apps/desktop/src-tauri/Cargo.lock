@@ -2337,10 +2337,8 @@ dependencies = [
 name = "omnirecall"
 version = "0.1.0"
 dependencies = [
- "hex",
  "serde",
  "serde_json",
- "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -2348,7 +2346,6 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tempfile",
  "tokio",
- "uuid",
 ]
 
 [[package]]

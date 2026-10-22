@@ -47,7 +47,9 @@ class ConsistencyService:
         """Items queued/processing with no live job, e.g. after a lost job row."""
         rows = self.repo.db.conn.execute(
             "SELECT i.id FROM items i WHERE i.status IN ('queued','processing') AND NOT EXISTS ("
-            "SELECT 1 FROM jobs j WHERE j.item_id = i.id AND j.status IN ('pending','running'))"
+            "SELECT 1 FROM jobs j WHERE j.item_id = i.id AND j.status IN ('pending','running')) "
+            "AND NOT EXISTS (SELECT 1 FROM vector_outbox o JOIN chunks c ON c.id = o.chunk_id "
+            "WHERE c.item_id = i.id AND o.status = 'pending')"
         )
         return [r["id"] for r in rows]
 
