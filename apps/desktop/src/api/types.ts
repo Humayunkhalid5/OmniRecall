@@ -72,7 +72,14 @@ export interface EngineStatus {
   uptime_s: number;
   items: Partial<Record<ItemStatus, number>>;
   jobs: Record<string, number>;
-  queue: { capacity: number; active: number; workers_busy: number; workers: number };
+  queue: {
+    capacity: number;
+    active: number;
+    /** Items accepted but not yet searchable; what the capacity limits. */
+    backlog: number;
+    workers_busy: number;
+    workers: number;
+  };
   model: { id: string; installed: boolean; loaded: boolean };
   transcription?: { id: string; installed: boolean; loaded: boolean; decoder_available: boolean };
   index: { chunks: number; vectors: number; table: string; pending_vector_writes: number };

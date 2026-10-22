@@ -52,7 +52,9 @@ class IngestionService:
         self.is_excluded: Callable[[Path], bool] = lambda _path: False
 
     def _check_capacity(self) -> None:
-        if self.repo.active_job_count() >= self.settings.queue_capacity:
+        # Items waiting for embedding count too: extraction jobs finish long
+        # before their vectors are written, so counting jobs let the backlog grow.
+        if self.repo.backlog_count() >= self.settings.queue_capacity:
             raise QueueFullError()
 
     def import_text(

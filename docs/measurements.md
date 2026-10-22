@@ -135,7 +135,7 @@ Downloaded through the engine's own verified `ModelManager` in the `Real models`
 | Metric | Result |
 |---|---|
 | Search median / p95 / max (hybrid, 156 queries, end to end through `Engine.search`) | **126.8 ms / 157.6 ms / 203.1 ms** (target: p95 under 1 s, design §11) |
-| Index build (100,000 synthetic chunks of about 480 characters, until every item is `indexed`) | 6507 s, about 15 chunks/s. Other builds and test runs shared the machine for much of this time, so it is an upper bound. Adding to a library this size is not slower than to a small one (improvement pass below) |
+| Index build (100,000 synthetic chunks of about 480 characters, until every item is `indexed`) | 6507 s, about 15 chunks/s. Most of that was OR-031, fixed in the improvement pass: 1372 s, about 73 chunks/s (below) |
 | SQLite database (with FTS5) | 227 MB |
 | LanceDB vectors (after compaction) | 162 MB |
 | Peak engine RSS during bulk indexing | 1358 MB |
@@ -189,7 +189,20 @@ The consistency check read the whole vector table, vectors included, to collect 
 Embedding (ONNX Runtime 1.31, 4 threads, 60 batches of 32 texts of 5 to 200 words): turning off the memory pattern planner lowered peak memory from 614-616 MB to 420-421 MB, with times of 26.0-27.0 s against 26.9-27.1 s (two runs each). Turning off the CPU memory arena instead saved more (405 MB) but was 44% slower, so it was not used.
 
 ### Adding items to a large library (REF-CI-LINUX)
-500 new, unique items added to the 100,000-chunk library, timed until every one was indexed (`scripts/bench_add.py`): 72.2 items/s with scalar indexes on the vector table, 74.2 items/s without them, and 77.8 items/s with the memory changes above (peak 596 MB). At 10,000 chunks the rate is about 70 items/s. The scalar indexes were dropped because they made no end-to-end difference. The 15 chunks/s figure in Phase 6 is a whole-library build on a shared machine, not the cost of adding to a large library.
+500 new, unique items added to the 100,000-chunk library, timed until every one was indexed (`scripts/bench_add.py`): 72.2 items/s with scalar indexes on the vector table, 74.2 items/s without them, and 77.8 items/s with the memory changes above (peak 596 MB). At 10,000 chunks the rate is about 70 items/s. The scalar indexes were dropped because they made no end-to-end difference.
+
+### Building a large library from scratch (REF-CI-LINUX, `bench_search.py`)
+The whole-library build was slow for a different reason (OR-031). The queue capacity counted extraction jobs only, and extraction is much faster than embedding, so up to 30,000 items piled up waiting for their vectors; marking each item indexed then scanned that whole pile. The rate fell from 55 items/s to about 8 and recovered only as the pile drained.
+
+| Build | Before | After (D-043) |
+|---|---|---|
+| 30,000 chunks | 636 s, 47 items/s | not re-run |
+| 40,000 chunks | stopped after 7 minutes: 30,000 items waiting for vectors, draining at about 25 items/s | 568 s, 70 items/s |
+| 100,000 chunks | 6650 s, 15 items/s | **1372 s, 73 items/s** |
+| Search p95 at 100,000 (hybrid, 156 queries) | 141.7-198.3 ms over three builds | 197.3 ms |
+| Peak engine RSS during the 100,000 build | 1223-1263 MB | 1294 MB |
+
+Peak memory during a bulk build is still about 1.3 GB; it is not the backlog, which is now held under 1,000 items, and remains open (OR-001).
 
 ### Speech-to-text, greedy decoding against beam search (GH-UBUNTU, whisper.cpp `base`)
 | Set | Decoding | Corpus WER | Mean / worst per recording | Mean real-time factor |

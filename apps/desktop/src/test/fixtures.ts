@@ -6,7 +6,7 @@ export function status(overrides: Partial<EngineStatus> = {}): EngineStatus {
     uptime_s: 1,
     items: { indexed: 2 },
     jobs: {},
-    queue: { capacity: 1000, active: 0, workers_busy: 0, workers: 2 },
+    queue: { capacity: 1000, active: 0, backlog: 0, workers_busy: 0, workers: 2 },
     model: { id: "all-minilm-l6-v2", installed: true, loaded: false },
     index: {
       chunks: 4,

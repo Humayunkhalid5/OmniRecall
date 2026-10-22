@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from omnirecall.app import Engine
+from omnirecall.errors import QueueFullError
 
 WORDS = [
     "tide",
@@ -46,20 +47,25 @@ def main() -> None:
     engine.startup_reconciled.wait(600)
     rng = random.Random(99)
     started = time.perf_counter()
-    ids = [
-        engine.import_text(
-            {
-                "text": " ".join(rng.choice(WORDS) for _ in range(70))
-                + f" unique-{i}-{rng.random()}",
-                "label": "bench",
-            }
-        )["item"]["id"]
-        for i in range(args.items)
-    ]
-    while any(engine.repo.get_item(i).status != "indexed" for i in ids) or (
-        engine.repo.pending_outbox(limit=1)
+    for i in range(args.items):
+        text = (
+            " ".join(rng.choice(WORDS) for _ in range(70))
+            + f" unique-{i}-{rng.random()}"
+        )
+        while True:
+            try:
+                engine.import_text({"text": text, "label": "bench"})
+                break
+            except QueueFullError:
+                # Back-pressure, as a large folder import meets it.
+                time.sleep(0.2)
+    # Cheap aggregate queries only, so the wait itself does not slow the indexer.
+    while (
+        engine.repo.active_job_count() > 0
+        or engine.repo.pending_outbox(limit=1)
+        or set(engine.repo.status_counts()) - {"indexed"}
     ):
-        time.sleep(0.2)
+        time.sleep(0.5)
     elapsed = time.perf_counter() - started
     peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     print(
