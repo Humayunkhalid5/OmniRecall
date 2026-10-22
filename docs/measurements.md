@@ -131,6 +131,20 @@ Downloaded through the engine's own verified `ModelManager` in the `Real models`
 - Published figures for Whisper `base` on LibriSpeech test-clean are about 5% WER with OpenAI's fuller text normalizer and beam search; this sample, the simpler normalizer, and greedy decoding are not directly comparable.
 - Findability, the gate (D-038): each of the four distinct recordings, transcribed and indexed with the real models, was the top result for a paraphrased question (`test_real_models_make_every_recording_findable`). The network audit passed in the same job with both real models installed.
 
+### Search latency at 100,000 chunks (REF-CI-LINUX, real MiniLM model)
+| Metric | Result |
+|---|---|
+| Search median / p95 / max (hybrid, 156 queries, end to end through `Engine.search`) | **126.8 ms / 157.6 ms / 203.1 ms** (target: p95 under 1 s, design §11) |
+| Index build (100,000 synthetic chunks of about 480 characters, until every item is `indexed`) | 6507 s, about 15 chunks/s. Other builds and test runs shared the machine for much of this time, so it is an upper bound |
+| SQLite database (with FTS5) | 227 MB |
+| LanceDB vectors (after compaction) | 162 MB |
+| Peak engine RSS during bulk indexing | 1358 MB |
+| Start-up on this index: database check / engine set-up / reconciliation | 559 ms / 7 ms / 1.7 s |
+
+Latency grew about 6× from 10,000 chunks (23 ms p95) for 10× the data; the vector search is a flat scan (no ANN index yet), so it grows roughly linearly. Peak memory during bulk indexing is high because the indexer batches vector writes; a user importing a large folder will see it.
+
+Command: `uv run --project services/local-engine python scripts/bench_search.py <data_dir_with_models> --chunks 100000`.
+
 ### Relevance re-run (GH-UBUNTU, real MiniLM model)
 Unchanged from Phase 2 on the same corpus and queries:
 
