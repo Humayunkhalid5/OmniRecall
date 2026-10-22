@@ -118,6 +118,46 @@ def pe_imports(path: Path) -> list[str]:
     return names
 
 
+# Which vendored license folder covers each DLL of the UB Mannheim build
+# (services/local-engine/packaging/third_party_licenses/README.md).
+WINDOWS_DLL_LICENSES = {
+    "libtesseract-5.dll": "tesseract",
+    "libleptonica-6.dll": "leptonica",
+    "libarchive-13.dll": "libarchive",
+    "libb2-1.dll": "libb2",
+    "libbrotlicommon.dll": "brotli",
+    "libbrotlidec.dll": "brotli",
+    "libbz2-1.dll": "bzip2",
+    "libcurl-4.dll": "curl",
+    "libdeflate.dll": "libdeflate",
+    "libexpat-1.dll": "expat",
+    "libgcc_s_seh-1.dll": "gcc-runtime",
+    "libstdc++-6.dll": "gcc-runtime",
+    "libgif-7.dll": "giflib",
+    "libiconv-2.dll": "libiconv",
+    "libidn2-0.dll": "libidn2",
+    "libintl-8.dll": "gettext-intl",
+    "libjbig-0.dll": "jbigkit",
+    "libjpeg-8.dll": "libjpeg-turbo",
+    "liblerc.dll": "lerc",
+    "liblz4.dll": "lz4",
+    "liblzma-5.dll": "xz",
+    "libopenjp2-7.dll": "openjpeg",
+    "libpng16-16.dll": "libpng",
+    "libpsl-5.dll": "libpsl",
+    "libsharpyuv-0.dll": "libwebp",
+    "libwebp-7.dll": "libwebp",
+    "libwebpmux-3.dll": "libwebp",
+    "libssh2-1.dll": "libssh2",
+    "libtiff-6.dll": "libtiff",
+    "libunistring-5.dll": "libunistring",
+    "libwinpthread-1.dll": "winpthreads",
+    "libzstd.dll": "zstd",
+    "zlib1.dll": "zlib",
+}
+VENDORED_LICENSES = ENGINE_SRC / "packaging" / "third_party_licenses"
+
+
 def bundle_tesseract_windows(source: Path, target: Path) -> None:
     target.mkdir()
     # The UB Mannheim build ships DLLs for its training tools too (Pango, Cairo,
@@ -133,12 +173,17 @@ def bundle_tesseract_windows(source: Path, target: Path) -> None:
             if dll is not None and dll.name.lower() not in needed:
                 needed[dll.name.lower()] = dll
                 pending.append(dll)
+    unknown = sorted(n for n in needed if n not in WINDOWS_DLL_LICENSES)
+    if unknown:
+        sys.exit(
+            f"no reviewed license for bundled DLLs: {unknown} (third_party_licenses)"
+        )
     for f in [source / "tesseract.exe", *needed.values()]:
         shutil.copy2(f, target / f.name)
+    for folder in sorted({"tesseract", *(WINDOWS_DLL_LICENSES[n] for n in needed)}):
+        shutil.copytree(VENDORED_LICENSES / folder, target / "licenses" / folder)
     (target / "tessdata").mkdir()
     shutil.copy2(source / "tessdata" / "eng.traineddata", target / "tessdata")
-    for folder in (source, source / "doc"):
-        copy_license_files(folder, target / "licenses" / "tesseract")
 
 
 def bundle_tesseract_macos(source: Path, target: Path) -> None:
@@ -188,7 +233,12 @@ def bundle_tesseract_macos(source: Path, target: Path) -> None:
             (keg / "lib" / n).exists() for n in bundled
         )
         if used and not copy_license_files(keg, target / "licenses" / formula):
-            print(f"warning: no license file in the {formula} keg", flush=True)
+            vendored = VENDORED_LICENSES / formula
+            if not vendored.is_dir():
+                sys.exit(
+                    f"no license file for bundled {formula} (third_party_licenses)"
+                )
+            shutil.copytree(vendored, target / "licenses" / formula)
 
 
 def default_tesseract_dir() -> Path | None:

@@ -28,6 +28,7 @@
 | OR-018 | RISK / P1 | Bundling Python, ONNX Runtime, and models makes installers large and engine start slow; every embedded native binary must be signed/notarized on macOS | Poor install experience; release blocked by signing | Measure installer size and cold start in Phase 0; make large models optional user-approved downloads; include sidecar binaries in the signing pipeline. Phase 0 measured: frozen engine 462 MB unpacked / 180 MB gzip, cold start ~150 ms (`measurements.md`) Phase 6: installers 144 MB (Windows), 203 MB (macOS), 259 MB (Linux .deb), models downloaded separately; packaged engine ready in 1.0-1.6 s. Signing is still not set up (`release.md`). | OPEN |
 | OR-019 | RISK / P2 | The embedding model truncates inputs at about 256 tokens and handles non-English text poorly | Missed results for long chunks and non-English content | Verify chunk token length in the chunker; keep a non-English query set in the evaluation corpus; MVP claims English only | OPEN |
 | OR-020 | RISK / P2 | `pywhispercpp` publishes no macOS x86_64 wheel | Audio transcription unavailable on Intel Macs | Build whisper.cpp from source in the macOS x86_64 release job, or mark audio transcription unavailable on Intel Macs in the support matrix. Phase 5: still open; the support matrix marks Intel Macs as not built yet | OPEN |
+| OR-030 | RISK / P1 | The Windows Tesseract bundle (UB Mannheim build) loads libcurl and, through LibTIFF, JBIG-KIT (GPL-2.0-or-later), plus four LGPL libraries curl needs | Copyleft obligations (source availability) for those DLLs; a network-capable library ships although OmniRecall only ever passes local file paths | Phase 6: bundle reduced to what `tesseract.exe` imports, every DLL mapped to a reviewed license and its text shipped (`third_party_licenses/README.md`). Before the stable release, build Tesseract and Leptonica for Windows without libcurl and JBIG (for example vcpkg, static), so only permissive libraries remain | OPEN |
 
 ## Verified defects
 
@@ -82,7 +83,7 @@ Use this template when a real bug is found:
 - [x] Crash recovery and index reconciliation pass fault-injection tests.
 - [x] The engine opens no network port; if the HTTP fallback is used, it is not reachable from the LAN and requires authentication.
 - [x] Relevance (recall@10, MRR) and latency results are recorded against the labeled evaluation corpus.
-- [ ] Model/dependency licenses and checksums are documented.
+- [x] Model/dependency licenses and checksums are documented. (Windows copyleft DLLs: OR-030.)
 - [ ] Resource and search latency results are measured on documented hardware.
 - [x] Clean install, upgrade, and uninstall behavior are tested.
 
