@@ -7,6 +7,7 @@ normalize). Loaded on first use and unloaded after the idle timeout.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from pathlib import Path
@@ -17,6 +18,22 @@ import numpy as np
 from omnirecall import logs
 from omnirecall.embeddings.base import Vectors
 from omnirecall.errors import ModelMissingError
+
+
+def import_onnxruntime() -> Any:
+    """Import ONNX Runtime with its telemetry off (OR-023).
+
+    ONNX Runtime 1.31 ships Microsoft 1DS telemetry on every platform: it
+    uploads events to an internet endpoint and keeps a device ID under the
+    user's cache folder. The variable must be set before the library loads;
+    the call covers a library that was imported elsewhere first.
+    """
+    os.environ["ORT_DISABLE_TELEMETRY"] = "1"
+    import onnxruntime as ort
+
+    ort.disable_telemetry_events()
+    return ort
+
 
 MODEL_ID = "all-minilm-l6-v2"
 DIMENSION = 384
@@ -73,8 +90,7 @@ class MiniLMEmbedder:
         self._ensure_tokenizers()
         if self._session is not None:
             return
-        import onnxruntime as ort
-
+        ort = import_onnxruntime()
         options = ort.SessionOptions()
         options.intra_op_num_threads = self._threads
         options.inter_op_num_threads = 1

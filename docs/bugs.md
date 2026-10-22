@@ -86,6 +86,36 @@ Use this template when a real bug is found:
 - [ ] Resource and search latency results are measured on documented hardware.
 - [ ] Clean install, upgrade, and uninstall behavior are tested.
 
+### OR-023 — ONNX Runtime sent telemetry to Microsoft and kept a device ID
+- **Type:** BUG (privacy)
+- **Priority:** P0
+- **Status:** CLOSED
+- **Environment:** Linux, engine 0.1.0 with `onnxruntime==1.31.0` and the MiniLM model installed. The library code is the same on Windows and macOS.
+- **Steps to reproduce:**
+  1. Start the engine with an installed embedding model.
+  2. Import a text and let it index (the model loads).
+  3. Trace the process with `strace -f -e trace=connect,sendto,openat`.
+- **Expected:** no network connection and no files outside the data folder (rules.md §1.1, §1.5).
+- **Actual:** a background thread sent `CONNECT mobile.events.data.microsoft.com:443` (here through the sandbox's HTTP proxy) and ONNX Runtime created `~/.cache/Microsoft/DeveloperTools/.onnxruntime/onnxruntime.db`, a telemetry store with a device ID. It did not happen on every run, which is why the Phase 3 audit missed it.
+- **Evidence:** the strace output above, found while extending the network audit in Phase 4. The string `events.data.microsoft.com` is in `onnxruntime/capi/libonnxruntime.so.1.31.0`, built with 1DS telemetry (`telemetry_1ds.cc`).
+- **Root cause:** ONNX Runtime 1.31 enables Microsoft 1DS telemetry by default on every platform. The engine did not turn it off.
+- **Fix plan:** set `ORT_DISABLE_TELEMETRY=1` at engine start and before the library is imported, and call `onnxruntime.disable_telemetry_events()` before a session is created.
+- **Regression tests:** `tests/test_network_audit.py::test_onnxruntime_is_imported_only_with_telemetry_off` (static: the only import goes through the guarded helper) and `test_engine_session_makes_no_network_calls`, which now also fails on any file created under the home folder outside the data folder. The runtime test needs the real model (`OMNIRECALL_TEST_MODELS_DIR`); CI does not have it yet, so Phase 6 adds a model download to the release audit job.
+- **Resolution:** fixed. With the fix, repeated traced sessions with the real model show no `AF_INET` calls and no telemetry files. Without it, the same test fails.
+
+### OR-022 — Requests in flight at shutdown could lose their reply
+- **Type:** BUG
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** Linux, engine 0.1.0 run directly with stdin left open.
+- **Steps to reproduce:** send several requests and then `shutdown` in one write, keeping stdin open.
+- **Expected:** every request is answered, then the engine exits cleanly.
+- **Actual:** sometimes a reply was missing and a `Traceback` was printed on exit.
+- **Root cause:** every request that finished after the stop flag was set signalled the main thread again (the OR-021 fix). A second signal raised inside the shutdown path.
+- **Fix plan:** signal the main thread once, and have the signal handler ignore further signals once shutdown has begun.
+- **Regression test:** `tests/test_rpc_server.py::test_requests_in_flight_at_shutdown_are_answered` (fails 4 of 4 runs without the fix).
+- **Resolution:** fixed.
+
 ### Phase 3 notes
 
 - **OR-003:** mitigations in place for clipboard: capture off by default, explicit opt-in on the first-run screen and in settings, tray and header indicator, global pause (tray, header, CommandOrControl+Alt+Shift+P), per-source pause, app/folder/pattern exclusions, dropped copies leave no trace (D-022), and the network audit in `docs/privacy-audit.md`. Stays OPEN until screenshots (Phase 4) carry the same controls and the beta privacy review passes.

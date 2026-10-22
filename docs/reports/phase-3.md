@@ -37,5 +37,5 @@
   - The tray menu could not be driven in the live run (no AppIndicator host under Xvfb); its state mapping is unit-tested and pause was exercised through the shortcut and the header. Close-to-tray was therefore not exercised live.
   - The Windows and macOS clipboard change-token code is compiled and tested in CI but was not run on a real desktop; Phase 6 covers real hardware.
   - Secret detection is best effort (OR-008) and is described that way in the UI.
-- **Bugs:** none opened. Notes added for OR-003, OR-008, OR-015 (all still OPEN by design or pending Phase 4).
+- **Bugs:** found after the PR opened, while extending the audit in Phase 4, and fixed on this branch: OR-023 (P0, ONNX Runtime telemetry uploads and a device ID file; the first audit's claim that the traced session used the real model was wrong) and OR-022 (P2, a reply could be lost at shutdown). Notes added for OR-003, OR-008, OR-015 (all still OPEN by design or pending Phase 4).
 - **Docs updated:** `decisions.md` D-022 to D-026; `design.md` §3 (clipboard adapter), §5 (exclusion semantics), §13 (export details); `bugs.md` Phase 3 notes; new `privacy-audit.md` and `support-matrix.md`.

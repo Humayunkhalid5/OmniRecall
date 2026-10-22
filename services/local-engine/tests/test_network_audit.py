@@ -41,6 +41,27 @@ NETWORK_MODULES = {
 ALLOWED = {"models.py": {"urllib"}}
 
 
+def test_onnxruntime_is_imported_only_with_telemetry_off():
+    """ONNX Runtime uploads telemetry unless disabled before it loads (OR-023)."""
+    importers = []
+    for path in PACKAGE.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+            if any(n.split(".")[0] == "onnxruntime" for n in names):
+                importers.append(path.relative_to(PACKAGE).as_posix())
+    assert importers == ["embeddings/minilm.py"]
+    source = (PACKAGE / "embeddings" / "minilm.py").read_text(encoding="utf-8")
+    assert 'os.environ["ORT_DISABLE_TELEMETRY"] = "1"' in source
+    assert "disable_telemetry_events()" in source
+    server = (PACKAGE / "api" / "server.py").read_text(encoding="utf-8")
+    assert 'os.environ["ORT_DISABLE_TELEMETRY"] = "1"' in server
+
+
 def test_only_model_setup_imports_network_modules():
     offenders = []
     for path in PACKAGE.rglob("*.py"):
@@ -108,7 +129,7 @@ def test_engine_session_makes_no_network_calls(tmp_path):
             "-f",
             "-qq",
             "-e",
-            "trace=connect,bind,sendto,sendmsg",
+            "trace=connect,bind,sendto,sendmsg,openat",
             "-o",
             str(trace),
             *engine,
@@ -129,4 +150,14 @@ def test_engine_session_makes_no_network_calls(tmp_path):
     calls = trace.read_text().splitlines()
     ip_calls = [c for c in calls if re.search(r"AF_INET6?|sin6?_port", c)]
     assert ip_calls == []
+    # Nothing is written outside the data folder and the source tree (bytecode),
+    # such as a library's device ID or cache (OR-023).
+    allowed = (str(tmp_path), str(PACKAGE.parents[2]), "/dev/", "/proc/")
+    created = [
+        m.group(1)
+        for c in calls
+        if "O_CREAT" in c and (m := re.search(r'openat\(AT_FDCWD, "([^"]+)"', c))
+    ]
+    stray = [p for p in created if p.startswith(str(Path.home())) and not p.startswith(allowed)]
+    assert stray == []
     assert (tmp_path / "audit.zip").is_file()
