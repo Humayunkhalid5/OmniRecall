@@ -83,7 +83,7 @@ jobs:
         run: |
           deb=$(ls apps/desktop/src-tauri/target/release/bundle/deb/*.deb)
           name=$(dpkg-deb -f "$deb" Package)
-          engine=$(dpkg-deb -c "$deb" | awk '{print $6}' | grep '/engine/omnirecall-engine$' | sed 's|^\.||')
+          engine=$(dpkg-deb -c "$deb" | awk '{print $6}' | grep 'engine/omnirecall-engine$' | sed -E 's|^\.?/?|/|')
           sudo apt-get install -y "./$deb"
           xvfb-run -a $UV python scripts/install_check.py installed --app /usr/bin/omnirecall --engine "$engine"
           sudo apt-get install -y --reinstall "./$deb"
