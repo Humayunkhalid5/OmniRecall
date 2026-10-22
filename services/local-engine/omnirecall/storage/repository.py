@@ -226,6 +226,13 @@ class Repository:
         rows = self.db.conn.execute("SELECT status, COUNT(*) AS n FROM items GROUP BY status")
         return {r["status"]: int(r["n"]) for r in rows}
 
+    def failed_codes(self) -> list[tuple[str | None, str | None]]:
+        """Source type and error code of each failed item (problem report)."""
+        rows = self.db.conn.execute(
+            "SELECT source_type, error_code FROM items WHERE status = 'failed'"
+        )
+        return [(r["source_type"], r["error_code"]) for r in rows]
+
     def transition(
         self,
         item_id: str,

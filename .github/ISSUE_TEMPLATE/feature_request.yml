@@ -1,0 +1,21 @@
+name: Idea or request
+description: Something OmniRecall should do, or do differently.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        During the beta, fixes for data loss, privacy, crashes, and wrong results come before
+        new features. Ideas are still welcome. OmniRecall will stay local-first: no cloud
+        sync, accounts, or analytics.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. When do you need to find something again?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?

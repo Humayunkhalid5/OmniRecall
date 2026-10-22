@@ -11,6 +11,8 @@ The first packaged version of OmniRecall: a local-first app that indexes what yo
 - Physical deletion of items and of the whole index; export to a documented zip format; screenshot retention and a media cap.
 - Self-repair: crashes during any write converge on restart; a damaged search index is rebuilt from the database; a damaged database opens in a recovery screen that can save the readable part.
 - Installers for Windows (NSIS), macOS (Apple Silicon .dmg), and Linux (.deb, .rpm).
+- Settings → Report a problem: a report with versions, counts, and error codes, and none of your content, that you read and then copy or save; nothing is sent by the app.
+- Each release comes with checksums, a software bill of materials, and build provenance attestations.
 
 ### Known limitations
 - The data folder is not encrypted by OmniRecall; use OS disk encryption.

@@ -374,6 +374,7 @@ class Engine:
             "exclusions.remove": self.exclusions_remove,
             "export.create": self.export_create,
             "storage.usage": self.storage_usage,
+            "diagnostics.report": self.diagnostics_report,
         }
         for method, handler in handlers.items():
             server.register(method, handler)
@@ -647,6 +648,18 @@ class Engine:
             "screenshot_retention_days": self._settings.screenshot_retention_days,
             "text_only_mode": self._settings.text_only_mode,
         }
+
+    def diagnostics_report(self, _params: dict[str, Any]) -> dict[str, Any]:
+        from omnirecall import diagnostics
+
+        report = diagnostics.build_report(
+            self.status({}),
+            self.capture_get({}),
+            diagnostics.count_failures(self.repo.failed_codes()),
+            len(self.repo.list_exclusions()),
+            self.data_dir / "logs" / "engine.log",
+        )
+        return {"report": report, "text": diagnostics.format_report(report)}
 
     def _require_model(self) -> None:
         if not self.embedder.available():

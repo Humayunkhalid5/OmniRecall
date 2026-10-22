@@ -1,0 +1,62 @@
+name: Bug report
+description: Something does not work as described.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing the OmniRecall beta.
+
+        **Please never paste captured text, search queries, file names, screenshots of your
+        library, your database, or media files here.** Issues are public.
+
+        The easiest way to give us the details we need is the problem report:
+        Settings → Report a problem → Create report. Read it, then paste it below. It contains
+        versions, counts, and error codes only.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is it?
+      description: Data loss, privacy, crashes, and wrong results are fixed first.
+      options:
+        - Something I saved is missing or was lost (data loss)
+        - Something was captured or kept that should not have been (privacy)
+        - The app or the search engine crashed or will not start
+        - A result points to the wrong item, file, or place in a recording
+        - Something else does not work
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Describe it in general terms, without the content involved.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Turn on clipboard capture
+        2. Copy text from a browser
+        3. ...
+  - type: textarea
+    id: report
+    attributes:
+      label: Problem report
+      description: Settings → Report a problem → Create report. Read it before pasting.
+      render: text
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Only needed if you did not paste a problem report.
+      placeholder: Windows 11 23H2 / macOS 14.6 / Ubuntu 24.04 (X11 or Wayland)
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before you submit
+      options:
+        - label: I checked that this issue contains none of my captured text, searches, file names, or app names.
+          required: true

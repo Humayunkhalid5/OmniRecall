@@ -11,6 +11,9 @@ use crate::engine::{EngineState, RpcError};
 use crate::screenshot::ScreenshotStatus;
 use crate::AppState;
 
+/// Where problem reports go (Phase 7). Opened only when the user asks.
+pub const ISSUES_URL: &str = "https://github.com/Humayunkhalid5/OmniRecall/issues/new/choose";
+
 /// Largest preview handed to the UI; thumbnails are far smaller.
 const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -46,6 +49,7 @@ pub const UI_METHODS: &[&str] = &[
     "storage.usage",
     "database.recover",
     "database.reset",
+    "diagnostics.report",
 ];
 
 pub fn ui_may_call(method: &str) -> bool {
@@ -348,6 +352,49 @@ pub async fn export_data(app: AppHandle, state: State<'_, AppState>) -> Result<V
         .await
 }
 
+/// Save the problem report to a text file the user names. The text comes from
+/// the engine, not from the UI, so the UI cannot write arbitrary content.
+#[tauri::command]
+pub async fn save_problem_report(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Value, RpcError> {
+    let report = state
+        .engine
+        .request("diagnostics.report", json!({}))
+        .await?;
+    let text = report
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Save the problem report")
+            .set_file_name("omnirecall-problem-report.txt")
+            .add_filter("Text", &["txt"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| RpcError::local("dialog_failed", "The save dialog could not be opened"))?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(json!({ "cancelled": true }));
+    };
+    std::fs::write(&path, text)
+        .map_err(|_| RpcError::local("write_failed", "The report could not be saved"))?;
+    Ok(json!({ "saved": true }))
+}
+
+/// Open the project's new-issue page in the user's browser. This is the only
+/// web address the app opens, and only from this button.
+#[tauri::command]
+pub fn open_issue_page(app: AppHandle) -> Result<(), RpcError> {
+    app.opener()
+        .open_url(ISSUES_URL, None::<&str>)
+        .map_err(|_| RpcError::local("open_failed", "The browser could not be opened"))
+}
+
 /// Exclude a folder from imports; the folder comes from the OS dialog.
 #[tauri::command]
 pub async fn add_folder_exclusion(
@@ -401,5 +448,15 @@ mod tests {
             assert!(!ui_may_call(method), "{method} must not be UI-callable");
         }
         assert!(ui_may_call("search"));
+    }
+
+    #[test]
+    fn the_only_web_page_the_app_opens_is_the_issue_page() {
+        assert!(ISSUES_URL.starts_with("https://github.com/"));
+        assert!(
+            !ISSUES_URL.contains('?'),
+            "no data may ride along in the URL"
+        );
+        assert!(ui_may_call("diagnostics.report"));
     }
 }

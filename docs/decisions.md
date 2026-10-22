@@ -336,3 +336,17 @@
 - **Reason:** the Phase 5 test's "under 25% on each fixture" was set before any real run. The first run showed two problems with it. The metric counted "forty" against Whisper's "40" as an error, which speech benchmarks normalize away. And the fixtures are robotic espeak-ng voices: on `recipe.ogg` Whisper heard "of flour" as "sunflower" and "of sugar" as "unshover" (32% after normalization), which says more about the synthetic voice than about how people's recordings will be transcribed. What the product promises is that a recording can be found again, so that is the gate; real speech is the accuracy measure.
 - **Docs updated:** `measurements.md`; `bugs.md` (OR-029).
 - **Replaces:** the per-fixture 25% WER criterion in the Phase 5 report.
+
+### D-039 — Beta feedback is a problem report the user reads, copies, or saves
+- **Date:** 2026-10-22
+- **Decision:** "opt-in user reports" (implementation plan, Phase 7) are a problem report built on request in Settings → Report a problem (`diagnostics.report`). It holds versions, OS, counts by state, failed items by source type and error code, model and index state, storage sizes, which capture sources are on, the number of exclusions, and up to 40 recent warnings re-filtered to codes, counts, and durations. It holds no content, paths, app names, exclusion rules, or item IDs. The app shows it in full; the user can copy it, save it to a file they name (the shell writes the engine's text, not text from the UI), or open the project's new-issue page in the browser. Nothing is ever sent by the app, and the issue URL carries no data.
+- **Reason:** the PRD rules out analytics and remote services, and any upload path, even opt-in, would be a channel for content to leave the device. A report the user reads and carries over themselves keeps that boundary while giving triage the codes it needs.
+- **Docs updated:** `beta.md`; `privacy.md`; `troubleshooting.md`; `SECURITY.md`; issue templates.
+- **Replaces:** none.
+
+### D-040 — Release provenance: pinned toolchains, SBOM, attestations
+- **Date:** 2026-10-22
+- **Decision:** a beta release is a `v*` tag; the version in the manifests stays a plain `0.1.x` and the GitHub release is marked pre-release, because .rpm and NSIS do not accept a pre-release suffix in the version. The release workflow pins Node (22.22.0), Rust (1.99.1), uv (0.11.32), and Python 3.12 through `uv.lock`; installs from lock files only; sets `SOURCE_DATE_EPOCH` from the commit; publishes `SHA256SUMS.txt`, a CycloneDX SBOM from the three lock files plus CPython and the bundled Tesseract (`scripts/sbom.py`), and a GitHub build provenance attestation for each installer. The draft release is published by a person.
+- **Reason:** byte-for-byte reproducible builds are not verified (PyInstaller and the platform bundlers embed timestamps and paths), so the release instead records exactly which inputs built it and lets anyone check that an installer came from this repository's workflow at that commit.
+- **Docs updated:** `release.md`; `beta.md`; `README.md`.
+- **Replaces:** none.

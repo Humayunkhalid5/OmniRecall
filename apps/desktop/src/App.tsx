@@ -115,7 +115,9 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>OmniRecall</h1>
+        <h1>
+          OmniRecall <span className="beta-badge">Beta</span>
+        </h1>
         <nav aria-label="Main">
           <ul className="tabs">
             {TABS.map((t) => (
