@@ -80,4 +80,4 @@ To remove your data as well, use Settings → Index maintenance → **Delete eve
 
 ## Reporting a problem
 
-Include the app version (Settings), your OS, the diagnostic code, and, if you are comfortable, the last lines of `logs/engine.log`. The log never contains captured text, queries, file names, or app names, but read it before sharing. Never attach your database or media.
+Use Settings → **Report a problem** → **Create report**. It lists the version, your system, counts, error codes, and recent warnings, and never your captured text, searches, file names, app names, or exclusions. Read it, then copy or save it and paste it into a [new issue](https://github.com/Humayunkhalid5/OmniRecall/issues/new/choose); OmniRecall sends nothing itself. Never attach your database or media. Anything that could expose someone's data goes to a private report instead (`SECURITY.md`).

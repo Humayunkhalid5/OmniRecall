@@ -37,7 +37,20 @@ Windows needs Tesseract installed (`choco install tesseract`); macOS needs `brew
 2. builds the installers: .deb and .rpm, .dmg, NSIS .exe;
 3. installs the package on the runner and runs `install_check.py`: the installed engine passes the smoke test, the app starts on a fresh user profile and its engine creates the database, a marker item is saved, the package is installed again over itself and the marker survives, and after uninstalling the program is gone and the data is still there. On macOS and Windows the system Tesseract is removed first, so OCR has to work from the bundled copy.
 
-A tag also creates a draft pre-release with the installers, `SHA256SUMS.txt`, and `CHANGELOG.md` as notes.
+A tag also creates a draft pre-release with the installers, `SHA256SUMS.txt`, an SBOM (`omnirecall-sbom.cdx.json`, CycloneDX 1.5), and `CHANGELOG.md` as notes, and a GitHub build provenance attestation for each installer (D-040). Check a download with:
+
+```bash
+sha256sum -c SHA256SUMS.txt --ignore-missing
+gh attestation verify OmniRecall_0.1.0_x64-setup.exe --repo Humayunkhalid5/OmniRecall
+```
+
+### Rebuilding a release
+The workflow pins Node 22.22.0, Rust 1.99.1, uv 0.11.32, and Python 3.12, installs only from `uv.lock`, `Cargo.lock`, and `package-lock.json`, and sets `SOURCE_DATE_EPOCH` from the tagged commit. Running it on the same tag uses the same inputs. The outputs are not byte-for-byte identical (PyInstaller and the bundlers embed build paths and times), which is why each installer carries an attestation instead.
+
+### Tagging a beta
+1. Work through the checklist below.
+2. Set the version in `tauri.conf.json`, `Cargo.toml` (both crates), `package.json`, `pyproject.toml`, and `omnirecall/__init__.py`, and move the `CHANGELOG.md` heading from "unreleased" to the date.
+3. Tag `v<version>` on `main` and push the tag. The release stays a draft until a maintainer publishes it.
 
 Verified: all four packages were built, installed, reinstalled, and uninstalled by the workflow on PR #6 (sizes and start times in `measurements.md` Phase 6), and the Linux .deb also by hand on REF-CI-LINUX (Ubuntu 24.04).
 

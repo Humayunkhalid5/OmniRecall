@@ -782,3 +782,19 @@ input[type="checkbox"][role="switch"] {
 .first-run li {
   margin-bottom: 0.4rem;
 }
+
+.report-preview {
+  margin-top: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.beta-badge {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.7rem;
+  font-weight: 600;
+  vertical-align: middle;
+}

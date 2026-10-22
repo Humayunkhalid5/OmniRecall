@@ -2,8 +2,10 @@ name: Release
 
 # Builds the installers on each OS, installs each one on the runner, and checks
 # install, upgrade (reinstall over itself), and uninstall with data kept.
-# A tag such as v0.1.0-beta.1 also creates a draft release with the installers
-# and SHA256SUMS.txt. Installers are not code-signed yet (docs/release.md).
+# A tag such as v0.1.0-beta.1 also creates a draft release with the installers,
+# SHA256SUMS.txt, an SBOM, and build provenance attestations. Installers are
+# not code-signed yet (docs/release.md). Toolchains are pinned so a release can
+# be rebuilt from its tag with the same inputs.
 
 on:
   push:
@@ -15,6 +17,7 @@ on:
       - "scripts/package_engine.py"
       - "scripts/smoke_engine.py"
       - "scripts/install_check.py"
+      - "scripts/sbom.py"
       - "services/local-engine/packaging/**"
       - "apps/desktop/src-tauri/tauri.release.conf.json"
       - "apps/desktop/src-tauri/src/paths.rs"
@@ -45,10 +48,15 @@ jobs:
           version: "0.11.32"
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22.22.0"
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - name: Build timestamp from the commit
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
 
       - name: Build tools and Tesseract
         shell: bash
@@ -138,6 +146,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # One SBOM for the release; the Windows job has the bundled Tesseract to name.
+            tess=$(apps/desktop/src-tauri/resources/engine/tesseract/tesseract.exe --version 2>&1 | head -1 | awk '{print $2}')
+            $UV python scripts/sbom.py out/omnirecall-sbom.cdx.json --tesseract-version "$tess"
+          fi
           find apps/desktop/src-tauri/target/release/bundle \( -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*-setup.exe' \) -exec cp {} out/ \;
           ls -la out
       - uses: actions/upload-artifact@v4
@@ -153,12 +166,22 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
+      - name: Build provenance for each installer
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            out/*.deb
+            out/*.rpm
+            out/*.dmg
+            out/*-setup.exe
       - name: Checksums and draft release
         env:
           GH_TOKEN: ${{ github.token }}

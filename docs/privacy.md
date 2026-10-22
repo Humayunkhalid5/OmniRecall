@@ -20,6 +20,8 @@ OmniRecall does not record from your microphone.
 
 Nothing you capture or import, and nothing you search for. OmniRecall has no account, no cloud service, no analytics, and no crash reporting. Its engine does not open any network port.
 
+**Problem reports** (Settings → Report a problem) are shown to you in full and only copied or saved when you choose; the app never sends them. Opening the issue page opens your browser at a fixed address that carries no data.
+
 The only network request OmniRecall makes is a model download that you start yourself in Settings: the search model (about 83 MB, from the URL shown before download) and the optional speech model (about 148 MB). Each file is checked against a published checksum before it is used. After that, OmniRecall works with no network connection.
 
 ## Where your data is

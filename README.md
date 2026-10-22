@@ -2,7 +2,23 @@
 
 Local-first personal context engine: find what you have already seen, copied, saved, or recorded, without it leaving your device.
 
-> Status: under active development (pre-beta). See `docs/reports/` for per-phase reports and `docs/bugs.md` for known risks.
+> **Beta.** OmniRecall 0.1 is a first public beta for Windows 10/11, macOS 12+ on Apple Silicon, and Linux (.deb, .rpm). Read the known limitations in `CHANGELOG.md` before trusting it with anything important. Installers are not code-signed yet.
+
+## Install
+
+Download the installer for your system from the [Releases](https://github.com/Humayunkhalid5/OmniRecall/releases) page and check it against `SHA256SUMS.txt`. Each installer also has a GitHub build provenance attestation (`gh attestation verify <file> --repo Humayunkhalid5/OmniRecall`).
+
+- **Windows:** run `OmniRecall_<version>_x64-setup.exe`. SmartScreen warns about an unknown publisher; choose More info → Run anyway.
+- **macOS:** open the .dmg and drag OmniRecall to Applications. The first time, right-click the app and choose Open.
+- **Linux:** `sudo apt install ./omni-recall_<version>_amd64.deb` or `sudo dnf install ./omni-recall-<version>-1.x86_64.rpm`.
+
+Then download the search model in Settings → Local models (83 MB), and, for audio notes, the speech model (148 MB). Everything else works offline. See `docs/troubleshooting.md` if something goes wrong.
+
+## Reporting problems
+
+Settings → Report a problem creates a report with versions, counts, and error codes, and none of your content. Read it, then attach it to a [new issue](https://github.com/Humayunkhalid5/OmniRecall/issues/new/choose). Report anything that could expose someone's data privately instead (`SECURITY.md`). During the beta, data-loss, privacy, crash, and wrong-result problems are fixed before new features (`docs/beta.md`).
+
+See `docs/reports/` for per-phase reports and `docs/bugs.md` for known risks.
 
 ## Architecture
 

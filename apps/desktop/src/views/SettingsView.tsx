@@ -25,6 +25,7 @@ export function SettingsView({ status, capture, refreshKey, onChanged }: Props) 
       <LimitsPanel />
       <StoragePanel status={status} />
       <IndexPanel onChanged={onChanged} />
+      <ReportPanel />
     </section>
   );
 }
@@ -412,6 +413,73 @@ function IndexPanel({ onChanged }: { onChanged: () => void }) {
         onConfirm={() => void run("clear")}
         onCancel={() => setConfirm(null)}
       />
+    </section>
+  );
+}
+
+function ReportPanel() {
+  const [text, setText] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const run = (action: () => Promise<void>) => {
+    setMessage(null);
+    action().catch((e: EngineCallError) => setMessage({ tone: "error", text: e.message }));
+  };
+  return (
+    <section className="panel" aria-labelledby="report-heading">
+      <h2 id="report-heading">Report a problem</h2>
+      <p>
+        A problem report lists the app version, your system, counts of items by state, error codes,
+        and recent warnings. It never contains your captured text, searches, file names, app names,
+        or exclusions. Nothing is sent: read it, then copy or save it and attach it to an issue if
+        you choose.
+      </p>
+      <div className="row-actions">
+        <button
+          type="button"
+          onClick={() => run(async () => setText((await engine.problemReport()).text))}
+        >
+          {text === null ? "Create report" : "Create again"}
+        </button>
+        {text !== null && (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                run(async () => {
+                  await navigator.clipboard.writeText(text);
+                  setMessage({ tone: "success", text: "Report copied." });
+                })
+              }
+            >
+              Copy report
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                run(async () => {
+                  const result = await engine.saveProblemReport();
+                  if (result.saved) setMessage({ tone: "success", text: "Report saved." });
+                })
+              }
+            >
+              Save report…
+            </button>
+          </>
+        )}
+        <button type="button" onClick={() => run(() => engine.openIssuePage().then(() => {}))}>
+          Open issue page in browser
+        </button>
+      </div>
+      {text !== null && (
+        <textarea
+          className="report-preview"
+          aria-label="Problem report"
+          readOnly
+          value={text}
+          rows={12}
+        />
+      )}
+      {message && <Notice tone={message.tone}>{message.text}</Notice>}
     </section>
   );
 }

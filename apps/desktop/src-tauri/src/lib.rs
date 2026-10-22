@@ -195,6 +195,8 @@ pub fn run() {
             commands::open_item_source,
             commands::reveal_data_dir,
             commands::export_data,
+            commands::save_problem_report,
+            commands::open_issue_page,
             commands::add_folder_exclusion,
             commands::pause_shortcut,
             commands::item_preview,
