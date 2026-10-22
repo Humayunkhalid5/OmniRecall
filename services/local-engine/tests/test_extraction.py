@@ -12,7 +12,8 @@ def extract(path, max_bytes=100 * MB, pages=500):
 
 
 def test_plain_markdown_and_encodings(tmp_path):
-    (tmp_path / "a.txt").write_text("Hello  world\r\nline two", encoding="utf-8")
+    # Bytes, so Windows text mode does not turn \r\n into \r\r\n.
+    (tmp_path / "a.txt").write_bytes(b"Hello  world\r\nline two")
     assert extract(tmp_path / "a.txt").text == "Hello world\nline two"
     (tmp_path / "b.md").write_bytes("# Title\n\nCafé".encode("utf-16"))
     assert extract(tmp_path / "b.md").text == "# Title\n\nCafé"
