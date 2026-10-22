@@ -147,4 +147,4 @@ jobs:
         env:
           OMNIRECALL_TEST_MODELS_DIR: ${{ github.workspace }}/real-models/models
           OMNIRECALL_REQUIRE_AUDIO_DECODER: "1"
-        run: uv run --frozen pytest -q -rs tests/test_audio.py tests/test_network_audit.py
+        run: uv run --frozen pytest -q -rs tests/test_audio.py tests/test_network_audit.py tests/test_known_vectors.py
