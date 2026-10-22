@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -80,12 +81,60 @@ def copy_license_files(source: Path, destination: Path) -> int:
     return copied
 
 
+def pe_imports(path: Path) -> list[str]:
+    """DLL names a Windows executable or DLL imports, including delay-loaded ones."""
+    data = path.read_bytes()
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    sections, optional_size = struct.unpack_from("<H12xH", data, pe + 6)
+    optional = pe + 24
+    directories = optional + (
+        112 if struct.unpack_from("<H", data, optional)[0] == 0x20B else 96
+    )
+    table = optional + optional_size
+    spans = [
+        struct.unpack_from("<II4xI", data, table + 40 * i + 8)  # size, rva, raw offset
+        for i in range(sections)
+    ]
+
+    def offset(rva: int) -> int:
+        for size, start, raw in spans:
+            if start <= rva < start + max(size, 1):
+                return raw + rva - start
+        raise ValueError("RVA outside every section")
+
+    def name_at(rva: int) -> str:
+        at = offset(rva)
+        return data[at : data.index(b"\0", at)].decode("ascii")
+
+    names = []
+    for index, entry_size, name_field in ((1, 20, 12), (13, 32, 4)):
+        rva = struct.unpack_from("<I", data, directories + 8 * index)[0]
+        if not rva:
+            continue
+        at = offset(rva)
+        while any(data[at : at + entry_size]):
+            names.append(name_at(struct.unpack_from("<I", data, at + name_field)[0]))
+            at += entry_size
+    return names
+
+
 def bundle_tesseract_windows(source: Path, target: Path) -> None:
     target.mkdir()
-    # The UB Mannheim build: tesseract.exe and the DLLs beside it.
-    for f in source.iterdir():
-        if f.name.lower() == "tesseract.exe" or f.suffix.lower() == ".dll":
-            shutil.copy2(f, target / f.name)
+    # The UB Mannheim build ships DLLs for its training tools too (Pango, Cairo,
+    # GLib, ICU). Bundle only what tesseract.exe loads, followed through each DLL.
+    available = {
+        f.name.lower(): f for f in source.iterdir() if f.suffix.lower() == ".dll"
+    }
+    needed: dict[str, Path] = {}
+    pending = [source / "tesseract.exe"]
+    while pending:
+        for name in pe_imports(pending.pop()):
+            dll = available.get(name.lower())
+            if dll is not None and dll.name.lower() not in needed:
+                needed[dll.name.lower()] = dll
+                pending.append(dll)
+    for f in [source / "tesseract.exe", *needed.values()]:
+        shutil.copy2(f, target / f.name)
     (target / "tessdata").mkdir()
     shutil.copy2(source / "tessdata" / "eng.traineddata", target / "tessdata")
     for folder in (source, source / "doc"):
