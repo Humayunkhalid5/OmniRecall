@@ -6,7 +6,9 @@ incompatible vectors can never share a table (rules.md §4.8).
 
 from __future__ import annotations
 
+import contextlib
 import re
+import shutil
 import threading
 import warnings
 from collections.abc import Iterable
@@ -250,6 +252,37 @@ class VectorStore:
             if self._exists(self.table_name):
                 self._db.drop_table(self.table_name)
             self._table = None
+
+    def check(self) -> bool:
+        """Read every row of the live table. False if any file of it is damaged."""
+        with self._lock:
+            try:
+                table = self._open(create=False)
+                if table is not None:
+                    data = table.to_arrow()
+                    if data.num_rows != table.count_rows():
+                        return False
+            except Exception:  # noqa: BLE001 - any failure to read means damage
+                self._table = None
+                return False
+        return True
+
+    def discard(self) -> None:
+        """Remove a damaged live table from disk, whatever state its files are in.
+
+        Vectors are derived data (SQLite holds the text), so nothing is lost; the
+        caller re-embeds. The files are deleted, not set aside, because they hold
+        content-derived vectors (design.md §7).
+        """
+        with self._lock:
+            self._table = None
+            # A damaged manifest can make drop_table fail; the files go regardless.
+            with contextlib.suppress(Exception):
+                if self._exists(self.table_name):
+                    self._db.drop_table(self.table_name)
+            path = (self.root / f"{self.table_name}.lance").resolve()
+            if path.parent == self.root.resolve() and path.exists():
+                shutil.rmtree(path)
 
     def disk_bytes(self) -> int:
         return sum(p.stat().st_size for p in self.root.rglob("*") if p.is_file())

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "resources/engine/": "engine/",
+      "resources/licenses.md": "licenses.md"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["tesseract-ocr", "tesseract-ocr-eng"]
+      },
+      "rpm": {
+        "depends": ["tesseract", "tesseract-langpack-eng"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}

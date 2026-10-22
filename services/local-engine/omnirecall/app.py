@@ -32,7 +32,7 @@ from omnirecall.jobs.queue import JobRunner
 from omnirecall.models import ModelManager
 from omnirecall.retrieval.search import SearchFilters, SearchService
 from omnirecall.settings import Settings, SettingsStore
-from omnirecall.storage.consistency import ConsistencyService
+from omnirecall.storage.consistency import ConsistencyReport, ConsistencyService
 from omnirecall.storage.db import Database
 from omnirecall.storage.deletion import DeletionService
 from omnirecall.storage.index import IndexWriter
@@ -135,12 +135,21 @@ class Engine:
         )
         self.writer = IndexWriter(self.repo, self.vectors, self.embedder)
         self.consistency = ConsistencyService(
-            self.repo, self.writer, self._settings.embedding_batch_size
+            self.repo,
+            self.writer,
+            self._settings.embedding_batch_size,
+            on_repaired=self._on_repaired,
         )
         self.deletion = DeletionService(
             self.db, self.repo, self.vectors, self.media_root, lock=self.writer.lock
         )
-        self.search_service = SearchService(self.repo, self.vectors, self.embedder)
+        self._vector_repair = threading.Event()
+        self._repairing = False
+        # Set once the startup reconciliation has run (tests wait on it).
+        self.startup_reconciled = threading.Event()
+        self.search_service = SearchService(
+            self.repo, self.vectors, self.embedder, on_vector_failure=self._request_vector_repair
+        )
         self.runner = JobRunner(
             self.repo,
             concurrency=self._settings.worker_concurrency,
@@ -244,6 +253,24 @@ class Engine:
     def _on_exhausted(self, job: Any, code: str) -> None:
         self.pipeline.on_exhausted(job, code)
 
+    def _request_vector_repair(self) -> None:
+        self._vector_repair.set()
+        self._maintenance_wake.set()
+
+    def _repair_vectors(self) -> None:
+        """Rebuild a damaged vector table from SQLite (D-035); searches stay keyword-only."""
+        if not self.embedder.available():
+            return
+        self._repairing = True
+        try:
+            self.consistency.repair_damaged()
+        finally:
+            self._repairing = False
+
+    def _on_repaired(self, report: ConsistencyReport) -> None:
+        self.notify("index.repaired", {"vectors": report.vector_rows})
+        self._vector_wake.set()
+
     def _vector_loop(self) -> None:
         """Embed and write vectors across items in batches, then finalize items."""
         while not self._stop.is_set():
@@ -257,6 +284,8 @@ class Engine:
                         self._settings.embedding_batch_size, limit=256
                     )
                 except Exception:  # noqa: BLE001 - logged inside; retry after a pause
+                    if not self.vectors.check():
+                        self._request_vector_repair()
                     self._stop.wait(2.0)
                     break
                 if not count:
@@ -271,9 +300,12 @@ class Engine:
         try:
             if self.embedder.available():
                 self._requeue_model_missing()
-            self.consistency.reconcile()
+            self.consistency.reconcile()  # also repairs a damaged vector table
+            self._vector_repair.clear()
         except Exception as exc:  # noqa: BLE001 - reported in status, retried next start
             logs.error("startup_reconcile_failed", reason=type(exc).__name__)
+        finally:
+            self.startup_reconciled.set()
         last_unload_check = time.monotonic()
         last_retention = 0.0
         while not self._stop.is_set():
@@ -282,6 +314,9 @@ class Engine:
             if self._stop.is_set():
                 break
             try:
+                if self._vector_repair.is_set():
+                    self._vector_repair.clear()
+                    self._repair_vectors()
                 if self.repo.open_tombstones():
                     completed = self.deletion.process()
                     if completed:
@@ -388,7 +423,8 @@ class Engine:
             },
             "index": {
                 "chunks": self.repo.chunk_count(),
-                "vectors": self.vectors.count(),
+                "vectors": self._vector_count(),
+                "repairing": self._repairing or self._vector_repair.is_set(),
                 "table": self.vectors.table_name,
                 "pending_vector_writes": len(self.repo.pending_outbox(limit=10_000)),
             },
@@ -478,6 +514,13 @@ class Engine:
         p = schemas.SearchParams.model_validate(params)
         filters = SearchFilters(**p.filters.model_dump())
         return self.search_service.search(p.query, self._settings, filters, p.limit)
+
+    def _vector_count(self) -> int | None:
+        try:
+            return self.vectors.count()
+        except Exception:  # noqa: BLE001 - damaged table; status must still answer
+            self._request_vector_repair()
+            return None
 
     def index_verify(self, _params: dict[str, Any]) -> dict[str, Any]:
         return self.consistency.verify().to_dict()
@@ -652,7 +695,9 @@ class Engine:
         return {"model_id": p.model_id}
 
     def _requeue_model_missing(self) -> None:
-        """Items that failed only because the model was missing are retried."""
+        """Items that failed only because the model was missing are retried, and a
+        vector table found damaged while the model was missing is rebuilt."""
+        self._request_vector_repair()
         marks = ",".join("?" * len(MODEL_MISSING_CODES))
         rows = self.db.conn.execute(
             f"SELECT id FROM items WHERE status = 'failed' AND error_code IN ({marks})",  # noqa: S608

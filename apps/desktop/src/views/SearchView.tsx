@@ -152,6 +152,12 @@ export function SearchView({
           The local search model is not installed, so results match keywords only.
         </Notice>
       )}
+      {modelInstalled && response?.semantic_unavailable_reason === "index_repairing" && (
+        <Notice tone="warning" title="The search index is being repaired">
+          Part of the index on this device was damaged, so OmniRecall is rebuilding it from your
+          stored text. Until it finishes, results match keywords only. Nothing you saved is lost.
+        </Notice>
+      )}
       {error && <Notice tone="error">{error}</Notice>}
 
       {!response && !error && !hasItems && (

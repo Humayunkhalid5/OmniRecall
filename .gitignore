@@ -13,3 +13,6 @@ apps/desktop/src-tauri/binaries/
 *.onnx
 *.bin
 .DS_Store
+
+# Packaging output (scripts/package_engine.py)
+apps/desktop/src-tauri/resources/

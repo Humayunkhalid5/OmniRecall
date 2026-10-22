@@ -44,6 +44,8 @@ pub const UI_METHODS: &[&str] = &[
     "exclusions.update",
     "exclusions.remove",
     "storage.usage",
+    "database.recover",
+    "database.reset",
 ];
 
 pub fn ui_may_call(method: &str) -> bool {

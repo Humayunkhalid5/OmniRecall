@@ -113,6 +113,7 @@ Efficiency rules:
 - Media files live in an app-owned data directory with random/stable IDs, not untrusted original filenames.
 - Use transactional outbox/reconciliation logic because SQLite and LanceDB cannot share one ACID transaction.
 - Provide index rebuild and orphan cleanup tools.
+- A damaged index is derived data: the vector table and FTS5 index are discarded and rebuilt from SQLite, with keyword-only search meanwhile (D-035). A damaged SQLite database is never used: the engine starts in recovery mode and the user chooses to recover the readable rows or start over (D-036).
 
 ### Retrieval
 1. Validate query and filters (date range, source types, and formats such as `audio`, D-034).
@@ -291,11 +292,13 @@ Chunk text never enters LanceDB; it holds chunk ID, item ID, text hash, model ID
 - Model missing: explain what is missing, size, license, and user-controlled setup action.
 - Permission denied: explain OS setting needed; never repeatedly prompt or silently fall back.
 - Engine unavailable: allow restart and show sanitized diagnostics.
+- Database damaged: show what happened, change nothing until the user chooses recover or start over, and list what was lost afterwards (D-036).
 - Clear index: explicit confirmation with a clear statement of what will be deleted.
 
 ## 9. Deployment model
 
 - Desktop installer bundles app shell and engine runtime where licensing and packaging permit.
+- Packaging (D-037): the frozen engine folder, with the audio decoder and (Windows, macOS) Tesseract, is the installer's `engine/` resource; Linux packages depend on the system Tesseract. Build and verification steps are in `release.md`.
 - Large model weights may be downloaded by explicit user action, with checksum verification and license display.
 - Core functionality must work offline after setup.
 - No hosted database, remote inference, account, or mandatory telemetry.

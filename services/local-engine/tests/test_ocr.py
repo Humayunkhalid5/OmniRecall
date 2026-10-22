@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import difflib
+import os
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -133,3 +135,23 @@ def test_formats_list_includes_images(tmp_path):
         assert isinstance(formats["ocr_available"], bool)
     finally:
         engine.close()
+
+
+def test_packaged_engine_uses_its_bundled_tesseract(tmp_path, monkeypatch):
+    from omnirecall.extraction import ocr as ocr_module
+
+    name = "tesseract.exe" if sys.platform == "win32" else "tesseract"
+    bundled = tmp_path / "tesseract" / name
+    bundled.parent.mkdir()
+    bundled.write_bytes(b"")
+    monkeypatch.delenv(ocr_module.TESSERACT_ENV, raising=False)
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    # Running from source never looks for a bundled copy.
+    assert ocr_module.bundled_tesseract() is None
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "omnirecall-engine"))
+    assert TesseractOcr()._resolve() == str(bundled)
+    assert os.environ["TESSDATA_PREFIX"] == str(tmp_path / "tesseract" / "tessdata")
+    # An explicit command still wins.
+    monkeypatch.setenv(ocr_module.TESSERACT_ENV, str(tmp_path / "missing"))
+    assert TesseractOcr()._resolve() is None

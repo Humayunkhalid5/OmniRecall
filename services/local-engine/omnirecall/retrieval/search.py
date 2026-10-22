@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from omnirecall import logs
 from omnirecall.embeddings.base import Embedder
 from omnirecall.errors import EngineError, LimitExceededError, ModelMissingError
 from omnirecall.ids import parse_utc
@@ -188,10 +190,18 @@ class Candidate:
 
 
 class SearchService:
-    def __init__(self, repo: Repository, vectors: VectorStore, embedder: Embedder) -> None:
+    def __init__(
+        self,
+        repo: Repository,
+        vectors: VectorStore,
+        embedder: Embedder,
+        on_vector_failure: Callable[[], None] | None = None,
+    ) -> None:
         self.repo = repo
         self.vectors = vectors
         self.embedder = embedder
+        # Called when the vector table cannot be read, so the engine can repair it.
+        self.on_vector_failure = on_vector_failure or (lambda: None)
 
     def validate(self, query: str, settings: Settings) -> str:
         cleaned = " ".join(query.split())
@@ -215,6 +225,7 @@ class SearchService:
         widen = 4 if filters.active() else 1
         candidates: dict[str, Candidate] = {}
         semantic_available = self.embedder.available()
+        unavailable_reason = None if semantic_available else "model_missing"
 
         lexical = fts_query(cleaned)
         if lexical:
@@ -228,12 +239,15 @@ class SearchService:
         if semantic_available:
             try:
                 vector = self.embedder.embed([cleaned])[0]
+                hits = self.vectors.search(vector, settings.vector_top_k * widen)
             except ModelMissingError:
-                semantic_available = False
+                semantic_available, unavailable_reason = False, "model_missing"
+            except Exception as exc:  # noqa: BLE001 - damaged vector table (D-035)
+                logs.error("vector_search_failed", reason=type(exc).__name__)
+                semantic_available, unavailable_reason = False, "index_repairing"
+                self.on_vector_failure()
             else:
-                for rank, hit in enumerate(
-                    self.vectors.search(vector, settings.vector_top_k * widen), start=1
-                ):
+                for rank, hit in enumerate(hits, start=1):
                     cand = candidates.setdefault(hit.chunk_id, Candidate(hit.chunk_id, hit.item_id))
                     cand.vector_rank = rank
                     cand.similarity = 1.0 - hit.distance
@@ -267,6 +281,7 @@ class SearchService:
             "results": results,
             "count": len(results),
             "semantic_available": semantic_available,
+            "semantic_unavailable_reason": unavailable_reason,
             "no_strong_match": not strong,
             "took_ms": round((time.perf_counter() - started) * 1000, 1),
         }

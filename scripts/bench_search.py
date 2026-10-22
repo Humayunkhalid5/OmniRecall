@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from omnirecall.app import Engine
+from omnirecall.storage.salvage import check
 
 EVAL = Path(__file__).resolve().parents[1] / "services/local-engine/tests/fixtures/eval"
 
@@ -84,6 +85,21 @@ def main() -> None:
         f"db_bytes={status['storage']['db_bytes']} vector_bytes={status['storage']['vector_bytes']}"
     )
     print(f"peak_rss_mb={resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.0f}")
+
+    # Startup cost at this size: the integrity check (D-036), then a full start.
+    t = time.perf_counter()
+    damage = check(data / "db" / "omnirecall.sqlite")
+    check_ms = (time.perf_counter() - t) * 1000
+    t = time.perf_counter()
+    engine = Engine(data, None, lambda m, p: None)
+    start_ms = (time.perf_counter() - t) * 1000
+    engine.startup_reconciled.wait(600)
+    reconcile_s = time.perf_counter() - t
+    engine.close()
+    print(
+        f"startup_check_ms={check_ms:.0f} damage={damage} engine_init_ms={start_ms:.0f} "
+        f"startup_reconcile_s={reconcile_s:.1f}"
+    )
 
 
 if __name__ == "__main__":

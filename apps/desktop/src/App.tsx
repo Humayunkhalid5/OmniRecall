@@ -5,6 +5,7 @@ import { CaptureIndicator } from "./components/CaptureIndicator";
 import { Notice } from "./components/Notice";
 import { useCapture } from "./hooks/useCapture";
 import { useEngineEvents, useEngineState, useStatus } from "./hooks/useEngine";
+import { DatabaseRecovery } from "./views/DatabaseRecovery";
 import { FirstRun } from "./views/FirstRun";
 import { ItemDetail } from "./views/ItemDetail";
 import { LibraryView } from "./views/LibraryView";
@@ -38,7 +39,7 @@ const failureText: Record<string, string> = {
 export function App() {
   const engineState = useEngineState();
   const running = engineState.state === "running";
-  const { status, refresh } = useStatus(running);
+  const { status, recovery, refresh } = useStatus(running);
   const capture = useCapture(running);
   const [firstRun, setFirstRun] = useState<boolean | null>(null);
   const [tab, setTab] = useState<Tab>("search");
@@ -64,7 +65,7 @@ export function App() {
     useCallback(
       (note: EngineNotification) => {
         if (note.method.startsWith("items.") && note.method !== "items.progress") bump();
-        if (note.method === "media.pruned") bump();
+        if (note.method === "media.pruned" || note.method === "index.repaired") bump();
       },
       [bump],
     ),
@@ -104,6 +105,7 @@ export function App() {
   };
 
   if (!running) return <EngineUnavailable state={engineState} />;
+  if (recovery) return <DatabaseRecovery recovery={recovery} />;
   if (firstRun) return <FirstRun onDone={() => setFirstRun(false)} />;
 
   const counts = status?.items ?? {};

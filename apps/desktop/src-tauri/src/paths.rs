@@ -35,9 +35,10 @@ fn restrict_permissions(_root: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Development builds run the engine from source with `uv`; release builds use
-/// the bundled sidecar binary next to the executable.
-pub fn engine_launch(data_dir: &Path) -> LaunchSpec {
+/// Development builds run the engine from source with `uv`; installed builds
+/// run the frozen engine that the installer put in the app's resources
+/// (`engine/`, next to its audio decoder and, on Windows and macOS, Tesseract).
+pub fn engine_launch(data_dir: &Path, resource_dir: Option<&Path>) -> LaunchSpec {
     let data_arg = data_dir.to_string_lossy().to_string();
     if let Ok(source_dir) = std::env::var("OMNIRECALL_ENGINE_SOURCE") {
         return LaunchSpec {
@@ -54,25 +55,63 @@ pub fn engine_launch(data_dir: &Path) -> LaunchSpec {
             cwd: Some(PathBuf::from(source_dir)),
         };
     }
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| PathBuf::from("."));
-    let name = if cfg!(windows) {
-        "omnirecall-engine.exe"
-    } else {
-        "omnirecall-engine"
-    };
     LaunchSpec {
-        program: exe_dir.join(name),
+        program: bundled_engine(resource_dir),
         args: vec!["--data-dir".into(), data_arg],
         cwd: None,
+    }
+}
+
+const ENGINE_NAME: &str = if cfg!(windows) {
+    "omnirecall-engine.exe"
+} else {
+    "omnirecall-engine"
+};
+
+/// `<resources>/engine/omnirecall-engine`, or next to the app executable when
+/// the resource folder is unknown. A missing file shows as `spawn_failed`.
+fn bundled_engine(resource_dir: Option<&Path>) -> PathBuf {
+    let base = resource_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| PathBuf::from("."))
+    });
+    let bundled = base.join("engine").join(ENGINE_NAME);
+    if bundled.is_file() {
+        bundled
+    } else {
+        base.join(ENGINE_NAME)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_engine_comes_from_the_resource_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine_dir = dir.path().join("engine");
+        std::fs::create_dir_all(&engine_dir).unwrap();
+        std::fs::write(engine_dir.join(ENGINE_NAME), b"").unwrap();
+        if std::env::var("OMNIRECALL_ENGINE_SOURCE").is_err() {
+            let spec = engine_launch(Path::new("/data"), Some(dir.path()));
+            assert_eq!(spec.program, engine_dir.join(ENGINE_NAME));
+            assert_eq!(
+                spec.args,
+                vec!["--data-dir".to_string(), "/data".to_string()]
+            );
+            assert!(spec.cwd.is_none());
+        }
+        // Without the bundled folder the path still names the engine, so the
+        // failure is reported as spawn_failed rather than running something else.
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            bundled_engine(Some(empty.path())),
+            empty.path().join(ENGINE_NAME)
+        );
+    }
 
     #[test]
     fn creates_layout() {
