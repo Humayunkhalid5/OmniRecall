@@ -11,7 +11,8 @@ Usage: python scripts/package_engine.py [--tesseract bundle|system] [--tesseract
 
 Run it with the engine's environment: `uv run --project services/local-engine
 --frozen python scripts/package_engine.py`. Nothing is downloaded here; the
-build machine provides Tesseract (CI installs it from the OS package manager).
+build machine provides Tesseract (on Windows `scripts/build_tesseract_windows.py`
+builds it into build/tesseract-windows; on macOS it comes from Homebrew).
 """
 
 from __future__ import annotations
@@ -118,70 +119,25 @@ def pe_imports(path: Path) -> list[str]:
     return names
 
 
-# Which vendored license folder covers each DLL of the UB Mannheim build
-# (services/local-engine/packaging/third_party_licenses/README.md).
-WINDOWS_DLL_LICENSES = {
-    "libtesseract-5.dll": "tesseract",
-    "libleptonica-6.dll": "leptonica",
-    "libarchive-13.dll": "libarchive",
-    "libb2-1.dll": "libb2",
-    "libbrotlicommon.dll": "brotli",
-    "libbrotlidec.dll": "brotli",
-    "libbz2-1.dll": "bzip2",
-    "libcurl-4.dll": "curl",
-    "libdeflate.dll": "libdeflate",
-    "libexpat-1.dll": "expat",
-    "libgcc_s_seh-1.dll": "gcc-runtime",
-    "libstdc++-6.dll": "gcc-runtime",
-    "libgif-7.dll": "giflib",
-    "libiconv-2.dll": "libiconv",
-    "libidn2-0.dll": "libidn2",
-    "libintl-8.dll": "gettext-intl",
-    "libjbig-0.dll": "jbigkit",
-    "libjpeg-8.dll": "libjpeg-turbo",
-    "liblerc.dll": "lerc",
-    "liblz4.dll": "lz4",
-    "liblzma-5.dll": "xz",
-    "libopenjp2-7.dll": "openjpeg",
-    "libpng16-16.dll": "libpng",
-    "libpsl-5.dll": "libpsl",
-    "libsharpyuv-0.dll": "libwebp",
-    "libwebp-7.dll": "libwebp",
-    "libwebpmux-3.dll": "libwebp",
-    "libssh2-1.dll": "libssh2",
-    "libtiff-6.dll": "libtiff",
-    "libunistring-5.dll": "libunistring",
-    "libwinpthread-1.dll": "winpthreads",
-    "libzstd.dll": "zstd",
-    "zlib1.dll": "zlib",
-}
 VENDORED_LICENSES = ENGINE_SRC / "packaging" / "third_party_licenses"
 
 
 def bundle_tesseract_windows(source: Path, target: Path) -> None:
-    target.mkdir()
-    # The UB Mannheim build ships DLLs for its training tools too (Pango, Cairo,
-    # GLib, ICU). Bundle only what tesseract.exe loads, followed through each DLL.
-    available = {
-        f.name.lower(): f for f in source.iterdir() if f.suffix.lower() == ".dll"
-    }
-    needed: dict[str, Path] = {}
-    pending = [source / "tesseract.exe"]
-    while pending:
-        for name in pe_imports(pending.pop()):
-            dll = available.get(name.lower())
-            if dll is not None and dll.name.lower() not in needed:
-                needed[dll.name.lower()] = dll
-                pending.append(dll)
-    unknown = sorted(n for n in needed if n not in WINDOWS_DLL_LICENSES)
-    if unknown:
+    """Copy the static build from scripts/build_tesseract_windows.py (OR-030)."""
+    exe = source / "tesseract.exe"
+    # Static: every import must be a part of Windows itself, so no library
+    # ships beside the executable except the ones linked in and listed in licenses/.
+    system = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    foreign = sorted(n for n in pe_imports(exe) if not (system / n).is_file())
+    if foreign:
+        sys.exit(f"tesseract.exe loads DLLs that are not part of Windows: {foreign}")
+    if not (source / "licenses").is_dir():
         sys.exit(
-            f"no reviewed license for bundled DLLs: {unknown} (third_party_licenses)"
+            f"no licenses folder in {source}; build it with build_tesseract_windows.py"
         )
-    for f in [source / "tesseract.exe", *needed.values()]:
-        shutil.copy2(f, target / f.name)
-    for folder in sorted({"tesseract", *(WINDOWS_DLL_LICENSES[n] for n in needed)}):
-        shutil.copytree(VENDORED_LICENSES / folder, target / "licenses" / folder)
+    target.mkdir()
+    shutil.copy2(exe, target / exe.name)
+    shutil.copytree(source / "licenses", target / "licenses")
     (target / "tessdata").mkdir()
     shutil.copy2(source / "tessdata" / "eng.traineddata", target / "tessdata")
 
@@ -243,9 +199,7 @@ def bundle_tesseract_macos(source: Path, target: Path) -> None:
 
 def default_tesseract_dir() -> Path | None:
     if sys.platform == "win32":
-        return (
-            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tesseract-OCR"
-        )
+        return ROOT / "build" / "tesseract-windows"
     if sys.platform == "darwin":
         prefix = subprocess.run(
             ["brew", "--prefix", "tesseract"],

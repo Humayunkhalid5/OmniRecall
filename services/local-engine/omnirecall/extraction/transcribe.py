@@ -31,6 +31,8 @@ WINDOW_S = 300
 SPLIT_SEARCH_S = 10
 SPLIT_FRAME_S = 0.1
 MIN_AUDIO_S = 0.1
+# 1 is greedy decoding; above 1, whisper.cpp keeps that many beams per step.
+BEAM_SIZE = 1
 
 OnSegment = Callable[[Segment], None]
 ShouldAbort = Callable[[], bool]
@@ -142,10 +144,17 @@ class WhisperCppTranscriber:
 
     name = "whisper.cpp"
 
-    def __init__(self, model_path: Path, model_id: str, threads: int | None = None) -> None:
+    def __init__(
+        self,
+        model_path: Path,
+        model_id: str,
+        threads: int | None = None,
+        beam_size: int = BEAM_SIZE,
+    ) -> None:
         self.model_path = model_path
         self.model_id = model_id
         self.threads = threads or max(1, min(4, os.cpu_count() or 1))
+        self.beam_size = beam_size
         self._model: Any = None
         self._lock = threading.Lock()
         self._last_used = 0.0
@@ -173,9 +182,16 @@ class WhisperCppTranscriber:
                 atexit.register(self._at_exit)
                 self._exit_hook = True
             started = time.monotonic()
+            decoding: dict[str, Any] = {}
+            if self.beam_size > 1:
+                decoding = {
+                    "params_sampling_strategy": 1,
+                    "beam_search": {"beam_size": self.beam_size, "patience": -1.0},
+                }
             self._model = Model(
                 str(self.model_path),
                 redirect_whispercpp_logs_to=False,
+                **decoding,
                 n_threads=self.threads,
                 language="auto",
                 print_progress=False,

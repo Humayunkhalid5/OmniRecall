@@ -195,7 +195,7 @@ class VectorStore:
             table = self._open(create=False)
             if table is None:
                 return set()
-            ids = table.to_arrow().column("chunk_id").to_pylist()
+            ids = self._column(table, "chunk_id")
         return set(ids)
 
     def all_item_ids(self) -> set[str]:
@@ -203,8 +203,16 @@ class VectorStore:
             table = self._open(create=False)
             if table is None:
                 return set()
-            ids = table.to_arrow().column("item_id").to_pylist()
+            ids = self._column(table, "item_id")
         return set(ids)
+
+    @staticmethod
+    def _column(table: Any, name: str) -> list[str]:
+        # Read one column only: the vectors are most of the table's size.
+        ids: list[str] = (
+            table.search().select([name]).limit(None).to_arrow().column(name).to_pylist()
+        )
+        return ids
 
     def read_all(self) -> pa.Table | None:
         with self._lock:
@@ -259,8 +267,9 @@ class VectorStore:
             try:
                 table = self._open(create=False)
                 if table is not None:
-                    data = table.to_arrow()
-                    if data.num_rows != table.count_rows():
+                    # In batches, so the check never holds the whole table in memory.
+                    rows = sum(b.num_rows for b in table.search().limit(None).to_batches(4096))
+                    if rows != table.count_rows():
                         return False
             except Exception:  # noqa: BLE001 - any failure to read means damage
                 self._table = None
