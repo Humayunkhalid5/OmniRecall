@@ -13,10 +13,14 @@ from typing import Any
 from omnirecall import __version__, logs
 from omnirecall.api import protocol, schemas
 from omnirecall.api.server import RpcServer
+from omnirecall.capture.clipboard import ClipboardCapture
+from omnirecall.capture.exclusions import ExclusionService
+from omnirecall.capture.state import CaptureState
 from omnirecall.embeddings.base import Embedder, vector_table_name
 from omnirecall.embeddings.minilm import MODEL_ID as MINILM_ID
 from omnirecall.embeddings.minilm import MiniLMEmbedder
 from omnirecall.errors import EngineError
+from omnirecall.export import Exporter
 from omnirecall.extraction.documents import DOCUMENT_FORMATS
 from omnirecall.ingestion.pipeline import Pipeline
 from omnirecall.ingestion.service import IngestionService
@@ -29,11 +33,15 @@ from omnirecall.storage.db import Database
 from omnirecall.storage.deletion import DeletionService
 from omnirecall.storage.index import IndexWriter
 from omnirecall.storage.repository import STAGE_PROCESS, Item, Repository
+from omnirecall.storage.retention import RetentionService
 from omnirecall.storage.states import ItemStatus
 from omnirecall.storage.vectors import VectorStore
 
 Notify = Callable[[str, dict[str, Any]], None]
 CHUNK_PREVIEW_LIMIT = 50
+RETENTION_INTERVAL_S = 3600
+# Changed only through capture.pause, which notifies the shell.
+SHELL_MANAGED_SETTINGS = frozenset({"capture_paused"})
 
 
 def _dir_bytes(path: Path) -> int:
@@ -126,6 +134,14 @@ class Engine:
             vectors_ready=self._vector_wake.set,
         )
         self.runner.register(STAGE_PROCESS, self.pipeline.process)
+        self.exclusions = ExclusionService(self.repo)
+        self.ingestion.is_excluded = self._path_excluded
+        self.capture_state = CaptureState(self.repo, self.settings_store, self._capture_changed)
+        self.clipboard = ClipboardCapture(
+            self.capture_state, self.exclusions, self.ingestion, lambda: self._settings
+        )
+        self.retention = RetentionService(self.repo, self.media_root, self.writer.lock)
+        self.exporter = Exporter(self.db, self.media_root, self.data_dir)
         self._maintenance: threading.Thread | None = None
         self._vector_thread: threading.Thread | None = None
         self._maintenance_wake = threading.Event()
@@ -154,6 +170,24 @@ class Engine:
             if thread:
                 thread.join(timeout=30)
         self.db.close()
+
+    def _path_excluded(self, path: Path) -> bool:
+        resolved = path.resolve()
+        # The app's own data is never imported back into itself.
+        if resolved.is_relative_to(self.data_dir.resolve()):
+            return True
+        return self.exclusions.rules().path_excluded(resolved)
+
+    def _capture_changed(self, state: dict[str, Any]) -> None:
+        self._settings = self.settings_store.load()
+        self.ingestion.settings = self._settings
+        logs.info("capture_state", status="capturing" if state["capturing"] else "idle")
+        self.notify("capture.state", state)
+
+    def _run_retention(self) -> None:
+        report = self.retention.run(self._settings)
+        if report.pruned_by_age or report.pruned_by_cap:
+            self.notify("media.pruned", report.to_dict())
 
     def _on_exhausted(self, job: Any, code: str) -> None:
         self.pipeline.on_exhausted(job, code)
@@ -189,6 +223,7 @@ class Engine:
         except Exception as exc:  # noqa: BLE001 - reported in status, retried next start
             logs.error("startup_reconcile_failed", reason=type(exc).__name__)
         last_unload_check = time.monotonic()
+        last_retention = 0.0
         while not self._stop.is_set():
             self._maintenance_wake.wait(timeout=2.0)
             self._maintenance_wake.clear()
@@ -201,6 +236,9 @@ class Engine:
                         self.notify("items.deleted", {"count": completed})
                 if self.repo.pending_outbox(limit=1):
                     self._vector_wake.set()
+                if time.monotonic() - last_retention > RETENTION_INTERVAL_S:
+                    last_retention = time.monotonic()
+                    self._run_retention()
                 if time.monotonic() - last_unload_check > 30:
                     last_unload_check = time.monotonic()
                     self.embedder.unload_if_idle(self._settings.model_idle_unload_s)
@@ -234,6 +272,17 @@ class Engine:
             "models.install_file": self.models_install_file,
             "models.cancel": self.models_cancel,
             "formats.list": self.formats_list,
+            "capture.state": self.capture_get,
+            "capture.set_source": self.capture_set_source,
+            "capture.pause": self.capture_pause,
+            "capture.clipboard": self.capture_clipboard,
+            "exclusions.list": self.exclusions_list,
+            "exclusions.add": self.exclusions_add,
+            "exclusions.add_path": self.exclusions_add_path,
+            "exclusions.update": self.exclusions_update,
+            "exclusions.remove": self.exclusions_remove,
+            "export.create": self.export_create,
+            "storage.usage": self.storage_usage,
         }
         for method, handler in handlers.items():
             server.register(method, handler)
@@ -397,9 +446,74 @@ class Engine:
 
     def settings_update(self, params: dict[str, Any]) -> dict[str, Any]:
         p = schemas.SettingsUpdateParams.model_validate(params)
+        managed = SHELL_MANAGED_SETTINGS & p.changes.keys()
+        if managed:
+            from omnirecall.errors import ValidationError
+
+            raise ValidationError("Use the capture controls to pause capture", sorted(managed)[0])
+        before = self._settings
         self._settings = self.settings_store.update(p.changes)
         self.ingestion.settings = self._settings
+        retention_keys = ("screenshot_retention_days", "media_cap_bytes")
+        if any(getattr(before, k) != getattr(self._settings, k) for k in retention_keys):
+            self._run_retention()
         return {"settings": self._settings.model_dump()}
+
+    # ---- capture and privacy -----------------------------------------------
+
+    def capture_get(self, _params: dict[str, Any]) -> dict[str, Any]:
+        return self.capture_state.snapshot() | {"session": {"clipboard": self.clipboard.counts()}}
+
+    def capture_set_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.CaptureSourceParams.model_validate(params)
+        self.capture_state.set_source(p.source_type, p.enabled, p.paused)
+        return self.capture_get({})
+
+    def capture_pause(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.CapturePauseParams.model_validate(params)
+        self.capture_state.set_paused(p.paused)
+        return self.capture_get({})
+
+    def capture_clipboard(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ClipboardCaptureParams.model_validate(params)
+        return self.clipboard.capture(p.text, p.app, p.app_known)
+
+    def exclusions_list(self, _params: dict[str, Any]) -> dict[str, Any]:
+        return {"exclusions": self.repo.list_exclusions()}
+
+    def exclusions_add(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ExclusionAddParams.model_validate(params)
+        exclusion_id = self.exclusions.add(p.rule_type, p.rule_value)
+        return {"id": exclusion_id, "exclusions": self.repo.list_exclusions()}
+
+    def exclusions_add_path(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ExclusionPathParams.model_validate(params)
+        exclusion_id = self.exclusions.add("path", p.rule_value)
+        return {"id": exclusion_id, "exclusions": self.repo.list_exclusions()}
+
+    def exclusions_update(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ExclusionUpdateParams.model_validate(params)
+        self.repo.update_exclusion(p.id, None, p.enabled)
+        return {"exclusions": self.repo.list_exclusions()}
+
+    def exclusions_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ExclusionRef.model_validate(params)
+        self.repo.delete_exclusion(p.id)
+        return {"exclusions": self.repo.list_exclusions()}
+
+    def export_create(self, params: dict[str, Any]) -> dict[str, Any]:
+        p = schemas.ExportParams.model_validate(params)
+        return self.exporter.export(
+            p.path, progress=lambda n: self.notify("export.progress", {"items": n})
+        )
+
+    def storage_usage(self, _params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "media_bytes": self.retention.usage(),
+            "media_cap_bytes": self._settings.media_cap_bytes,
+            "screenshot_retention_days": self._settings.screenshot_retention_days,
+            "text_only_mode": self._settings.text_only_mode,
+        }
 
     def _require_model(self) -> None:
         if not self.embedder.available():

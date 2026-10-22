@@ -71,3 +71,48 @@ class ModelRef(Params):
 
 class ModelFileParams(ModelRef):
     path: str = Field(min_length=1, max_length=4096)
+
+
+CaptureSource = Literal["clipboard", "screenshot"]
+
+
+class CaptureSourceParams(Params):
+    source_type: CaptureSource
+    enabled: bool | None = None
+    paused: bool | None = None
+
+
+class CapturePauseParams(Params):
+    paused: bool
+
+
+class ClipboardCaptureParams(Params):
+    # Oversized copies are measured and dropped by the engine, so the field
+    # allows more than the clipboard limit; the protocol caps the message.
+    text: str = Field(min_length=1)
+    app: str | None = Field(default=None, max_length=256)
+    app_known: bool = False
+
+
+class ExclusionAddParams(Params):
+    # Folder rules come only from the shell's folder dialog (exclusions.add_path).
+    rule_type: Literal["app", "pattern"]
+    rule_value: str = Field(min_length=1, max_length=500)
+
+
+class ExclusionPathParams(Params):
+    rule_type: Literal["path"]
+    rule_value: str = Field(min_length=1, max_length=4096)
+
+
+class ExclusionUpdateParams(Params):
+    id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    enabled: bool
+
+
+class ExclusionRef(Params):
+    id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+
+
+class ExportParams(Params):
+    path: str = Field(min_length=1, max_length=4096)

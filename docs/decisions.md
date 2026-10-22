@@ -159,3 +159,38 @@
 - **Reason:** PRD §5 requires a declared, tested format list. Pure-Python extractors (`pypdf`, `python-docx`, stdlib) execute no embedded content (rules §4.4).
 - **Docs updated:** `docs/reports/phase-2.md`.
 - **Replaces:** none.
+
+### D-022 — Dropped clipboard copies leave no trace
+- **Date:** 2026-10-22
+- **Decision:** a clipboard copy that is too large, comes from an excluded app, contains excluded text, comes from an unknown app while app exclusions exist, or looks like a secret is not stored at all: no `skipped` item, no content hash, no payload. The engine keeps per-session counts in memory, shown in Settings, and logs only the outcome. Duplicates return the existing item.
+- **Reason:** a `skipped` row with a hash would reveal when a secret was copied, and a SHA-256 of a short password can be reversed by guessing. PRD §6 asks for exclusion before persistence.
+- **Docs updated:** `design.md` §3 (source adapters), `docs/privacy-audit.md`.
+- **Replaces:** none. The `skipped` state still covers imports that are deliberately not indexed.
+
+### D-023 — Clipboard watching runs in the shell
+- **Date:** 2026-10-22
+- **Decision:** the Rust shell watches the clipboard (`arboard`), using the OS change counter on Windows and macOS and in-memory text comparison on Linux, and sends new text to the shell-only `capture.clipboard` method with the frontmost app (`active-win-pos-rs`). It reads nothing while the engine reports clipboard capture inactive, and the text present when capture becomes active is a baseline, never captured. The engine re-checks enabled and paused state on every capture. App exclusions fail closed when the app is unknown.
+- **Reason:** design §3 gives OS permissions to the shell. Checking state on both sides means either one alone stops capture.
+- **Docs updated:** `design.md` §3, `docs/support-matrix.md`.
+- **Replaces:** none.
+
+### D-024 — Capture indicator, pause, and closing the window
+- **Date:** 2026-10-22
+- **Decision:** a tray icon shows capture on, paused, or off, with Pause/Resume, Open, and Quit. The window header shows the same state with a one-click Pause or Resume. Ctrl/Cmd+Alt+Shift+P toggles global pause where the OS allows global shortcuts. Pause is stored, so it survives restarts. While any capture source is enabled and a tray exists, closing the window hides it to the tray; otherwise closing quits. Pausing is changed only through `capture.pause`, never `settings.update`, so the shell is always notified.
+- **Reason:** PRD §6 requires visible status and one-action pause; background capture needs the app to outlive its window, and the tray keeps that visible.
+- **Docs updated:** `docs/support-matrix.md`.
+- **Replaces:** none.
+
+### D-025 — Exclusion rules
+- **Date:** 2026-10-22
+- **Decision:** three rule types. `app` matches the app name case-insensitively, ignoring `.exe` and `.app`. `pattern` is literal text matched case-insensitively, never a regular expression. `path` is a folder whose files are never imported, added only through the shell's folder dialog (`exclusions.add_path` is not UI-callable, per D-016). The app's own data folder is always excluded from imports.
+- **Reason:** literal matching cannot hang the engine on a pathological pattern; folder paths stay out of UI-supplied parameters.
+- **Docs updated:** `design.md` §5 (`exclusions`).
+- **Replaces:** none.
+
+### D-026 — Export details
+- **Date:** 2026-10-22
+- **Decision:** the export zip follows §13 and adds `format`, `format_version` (1), `chunk_count`, `media_count`, and `vectors_included: false` to the manifest. Items in `deleting` or `deleted` are left out; transient payloads in `media/incoming/` are never exported. The zip is written to `<name>.partial` and renamed when complete. It is read from one SQLite snapshot, so concurrent indexing cannot produce a mixed export. The target must be outside the app data folder and is chosen in a save dialog.
+- **Reason:** a deleted item must not reappear through an export, and an interrupted export must not look complete.
+- **Docs updated:** `design.md` §13.
+- **Replaces:** none.

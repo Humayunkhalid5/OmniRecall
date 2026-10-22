@@ -85,3 +85,9 @@ Use this template when a real bug is found:
 - [ ] Model/dependency licenses and checksums are documented.
 - [ ] Resource and search latency results are measured on documented hardware.
 - [ ] Clean install, upgrade, and uninstall behavior are tested.
+
+### Phase 3 notes
+
+- **OR-003:** mitigations in place for clipboard: capture off by default, explicit opt-in on the first-run screen and in settings, tray and header indicator, global pause (tray, header, CommandOrControl+Alt+Shift+P), per-source pause, app/folder/pattern exclusions, dropped copies leave no trace (D-022), and the network audit in `docs/privacy-audit.md`. Stays OPEN until screenshots (Phase 4) carry the same controls and the beta privacy review passes.
+- **OR-008:** `capture/sensitive.py` detects common key and token formats, credential assignments, connection strings with passwords, Luhn-valid card numbers, and lone password-like tokens. The settings page says detection is best effort and offers the on/off switch and exclusions. Stays OPEN by design: complete detection cannot be promised.
+- **OR-015:** clipboard reading on Linux works on X11 and on Wayland compositors with the data-control protocol (arboard `wayland-data-control`); global shortcuts may not register on Wayland, and the tray needs an AppIndicator host. Recorded in `docs/support-matrix.md`. The screenshot half is Phase 4 work; stays OPEN.

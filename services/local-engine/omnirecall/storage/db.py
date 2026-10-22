@@ -55,6 +55,10 @@ class Database:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._check_fts5()
 
+    def new_connection(self) -> sqlite3.Connection:
+        """An unshared connection, for a long read that needs its own snapshot."""
+        return self._connect()
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30, isolation_level=None, check_same_thread=False)
         conn.row_factory = sqlite3.Row

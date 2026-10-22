@@ -3,17 +3,24 @@ import { engine, EngineCallError, type EngineNotification } from "../api/engine"
 import type { ConsistencyReport, EngineStatus, ModelInfo } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Notice } from "../components/Notice";
+import type { CaptureControls } from "../hooks/useCapture";
 import { useEngineEvents } from "../hooks/useEngine";
 import { describeError, formatBytes } from "../lib/format";
+import { CapturePanel, DataPanel, ExclusionsPanel } from "./PrivacySettings";
 
 interface Props {
   status: EngineStatus | null;
+  capture: CaptureControls;
+  refreshKey: number;
   onChanged: () => void;
 }
 
-export function SettingsView({ status, onChanged }: Props) {
+export function SettingsView({ status, capture, refreshKey, onChanged }: Props) {
   return (
     <section className="settings" aria-label="Settings">
+      <CapturePanel controls={capture} />
+      <ExclusionsPanel />
+      <DataPanel refreshKey={refreshKey} />
       <ModelsPanel onChanged={onChanged} />
       <LimitsPanel />
       <StoragePanel status={status} />

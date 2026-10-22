@@ -258,6 +258,21 @@ class Repository:
                 (json.dumps(merged, separators=(",", ":")), utc_now(), item_id),
             )
 
+    def items_with_media(
+        self, source_types: list[str] | None = None, captured_before: str | None = None
+    ) -> list[Item]:
+        """Items whose app-owned media is still present, oldest first."""
+        sql = f"SELECT {ITEM_COLUMNS} FROM items WHERE media_status = 'present'"  # noqa: S608
+        args: list[Any] = []
+        if source_types:
+            sql += f" AND source_type IN ({','.join('?' * len(source_types))})"
+            args.extend(source_types)
+        if captured_before:
+            sql += " AND captured_at < ?"
+            args.append(captured_before)
+        sql += " ORDER BY captured_at, id"
+        return [Item.from_row(r) for r in self.db.conn.execute(sql, args)]
+
     def set_media_status(self, item_id: str, status: str, clear_uri: bool = False) -> None:
         with self.db.write() as conn:
             if clear_uri:

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { engine, onImportResult, type EngineNotification } from "./api/engine";
 import type { EngineState, ImportSummary } from "./api/types";
+import { CaptureIndicator } from "./components/CaptureIndicator";
 import { Notice } from "./components/Notice";
+import { useCapture } from "./hooks/useCapture";
 import { useEngineEvents, useEngineState, useStatus } from "./hooks/useEngine";
+import { FirstRun } from "./views/FirstRun";
 import { ItemDetail } from "./views/ItemDetail";
 import { LibraryView } from "./views/LibraryView";
 import { SearchView } from "./views/SearchView";
@@ -36,6 +39,8 @@ export function App() {
   const engineState = useEngineState();
   const running = engineState.state === "running";
   const { status, refresh } = useStatus(running);
+  const capture = useCapture(running);
+  const [firstRun, setFirstRun] = useState<boolean | null>(null);
   const [tab, setTab] = useState<Tab>("search");
   const [selected, setSelected] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -59,6 +64,7 @@ export function App() {
     useCallback(
       (note: EngineNotification) => {
         if (note.method.startsWith("items.") && note.method !== "items.progress") bump();
+        if (note.method === "media.pruned") bump();
       },
       [bump],
     ),
@@ -84,12 +90,21 @@ export function App() {
     };
   }, [imported]);
 
+  useEffect(() => {
+    if (!running) return;
+    engine
+      .getSettings()
+      .then((r) => setFirstRun(!r.settings.first_run_completed))
+      .catch(() => setFirstRun(false));
+  }, [running]);
+
   const deleted = (itemId: string) => {
     if (selected === itemId) setSelected(null);
     bump();
   };
 
   if (!running) return <EngineUnavailable state={engineState} />;
+  if (firstRun) return <FirstRun onDone={() => setFirstRun(false)} />;
 
   const counts = status?.items ?? {};
   const hasItems = Object.entries(counts).some(([s, n]) => s !== "deleted" && (n ?? 0) > 0);
@@ -114,6 +129,11 @@ export function App() {
             ))}
           </ul>
         </nav>
+        <CaptureIndicator
+          capture={capture.capture}
+          onToggle={() => void capture.toggle()}
+          onOpenSettings={() => setTab("settings")}
+        />
         <p className="engine-badge" role="status">
           <span className={`dot ${busy ? "dot-busy" : "dot-ok"}`} aria-hidden="true" />
           {busy ? `Indexing (${status?.queue.active ?? 0} queued)` : stateText[engineState.state]}
@@ -147,7 +167,14 @@ export function App() {
               onChanged={bump}
             />
           )}
-          {tab === "settings" && <SettingsView status={status} onChanged={bump} />}
+          {tab === "settings" && (
+            <SettingsView
+              status={status}
+              capture={capture}
+              refreshKey={refreshKey}
+              onChanged={bump}
+            />
+          )}
         </main>
         {selected && (
           <ItemDetail

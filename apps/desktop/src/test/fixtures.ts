@@ -1,4 +1,4 @@
-import type { EngineStatus, Item, SearchResponse } from "../api/types";
+import type { CaptureState, EngineStatus, Item, SearchResponse } from "../api/types";
 
 export function status(overrides: Partial<EngineStatus> = {}): EngineStatus {
   return {
@@ -70,5 +70,23 @@ export function searchResponse(overrides: Partial<SearchResponse> = {}): SearchR
     no_strong_match: false,
     took_ms: 12,
     ...overrides,
+  };
+}
+
+export function captureState(
+  clipboard: { enabled?: boolean; paused?: boolean } = {},
+  paused = false,
+): CaptureState {
+  const enabled = clipboard.enabled ?? false;
+  const sourcePaused = enabled && (clipboard.paused ?? false);
+  const active = enabled && !sourcePaused && !paused;
+  return {
+    paused,
+    capturing: active,
+    sources: {
+      clipboard: { enabled, paused: sourcePaused, active },
+      screenshot: { enabled: false, paused: false, active: false },
+    },
+    session: { clipboard: {} },
   };
 }

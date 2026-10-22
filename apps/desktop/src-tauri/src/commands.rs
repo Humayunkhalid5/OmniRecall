@@ -32,6 +32,14 @@ pub const UI_METHODS: &[&str] = &[
     "models.list",
     "models.download",
     "models.cancel",
+    "capture.state",
+    "capture.set_source",
+    "capture.pause",
+    "exclusions.list",
+    "exclusions.add",
+    "exclusions.update",
+    "exclusions.remove",
+    "storage.usage",
 ];
 
 pub fn ui_may_call(method: &str) -> bool {
@@ -202,6 +210,67 @@ pub fn reveal_data_dir(app: AppHandle, state: State<'_, AppState>) -> Result<(),
         .map_err(|_| RpcError::local("open_failed", "The folder could not be opened"))
 }
 
+/// Export to a zip the user names in a save dialog (design §13).
+#[tauri::command]
+pub async fn export_data(app: AppHandle, state: State<'_, AppState>) -> Result<Value, RpcError> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Export your OmniRecall data")
+            .set_file_name("omnirecall-export.zip")
+            .add_filter("Zip archive", &["zip"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| RpcError::local("dialog_failed", "The save dialog could not be opened"))?;
+    let Some(mut path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(json!({ "cancelled": true }));
+    };
+    if path.extension().and_then(|e| e.to_str()) != Some("zip") {
+        path.set_extension("zip");
+    }
+    state
+        .engine
+        .request_with_timeout(
+            "export.create",
+            json!({ "path": path.to_string_lossy() }),
+            std::time::Duration::from_secs(1800),
+        )
+        .await
+}
+
+/// Exclude a folder from imports; the folder comes from the OS dialog.
+#[tauri::command]
+pub async fn add_folder_exclusion(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Value, RpcError> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose a folder OmniRecall should never import")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| RpcError::local("dialog_failed", "The folder dialog could not be opened"))?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(json!({ "cancelled": true }));
+    };
+    state
+        .engine
+        .request(
+            "exclusions.add_path",
+            json!({ "rule_type": "path", "rule_value": path.to_string_lossy() }),
+        )
+        .await
+}
+
+/// The global pause shortcut and whether the OS accepted it.
+#[tauri::command]
+pub fn pause_shortcut(state: State<'_, AppState>) -> Value {
+    json!({ "shortcut": crate::tray::PAUSE_SHORTCUT, "registered": state.shortcut_registered })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +282,8 @@ mod tests {
             "models.install_file",
             "shutdown",
             "export.create",
+            "exclusions.add_path",
+            "capture.clipboard",
             "anything",
         ] {
             assert!(!ui_may_call(method), "{method} must not be UI-callable");
