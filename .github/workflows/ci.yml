@@ -85,3 +85,56 @@ jobs:
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
           cargo test
+
+  real-models:
+    # The real search and speech models, downloaded through the engine's own
+    # checksum-verified ModelManager: relevance, speech-to-text accuracy, and
+    # the network audit with real models (docs/measurements.md).
+    name: Real models (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    env:
+      DATA: ${{ github.workspace }}/real-models
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y strace
+      - name: Audio decoder
+        working-directory: services/audio-decoder
+        run: cargo build --release --locked
+      - run: uv sync --frozen --python 3.12
+        working-directory: services/local-engine
+      - uses: actions/cache@v4
+        with:
+          path: real-models/models
+          key: models-${{ hashFiles('services/local-engine/omnirecall/model_manifests/*.json') }}
+      - name: Download models (verified by the engine)
+        working-directory: services/local-engine
+        run: |
+          uv run --frozen python - <<'PY'
+          import os
+          from pathlib import Path
+          from omnirecall.models import ModelManager
+          manager = ModelManager(Path(os.environ["DATA"]) / "models")
+          for model_id in ("all-minilm-l6-v2", "whisper-base"):
+              if not manager.is_installed(model_id):
+                  manager.download(model_id)
+              print(model_id, "installed:", manager.is_installed(model_id))
+          PY
+      - name: Speech-to-text accuracy (whisper.cpp base)
+        working-directory: services/local-engine
+        run: uv run --frozen python ../../scripts/eval_transcription.py "$DATA/models"
+      - name: Relevance (hybrid, vector, keyword)
+        working-directory: services/local-engine
+        run: |
+          for mode in hybrid vector keyword; do
+            uv run --frozen python ../../scripts/eval_relevance.py "$DATA" --mode $mode
+          done
+      - name: Real-model tests and network audit
+        working-directory: services/local-engine
+        env:
+          OMNIRECALL_TEST_MODELS_DIR: ${{ github.workspace }}/real-models/models
+          OMNIRECALL_REQUIRE_AUDIO_DECODER: "1"
+        run: uv run --frozen pytest -q -rs tests/test_audio.py tests/test_network_audit.py
