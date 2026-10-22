@@ -40,6 +40,8 @@ def bundled_tesseract() -> Path | None:
     name = "tesseract.exe" if sys.platform == "win32" else "tesseract"
     candidate = Path(sys.executable).parent / BUNDLED_DIR / name
     return candidate if candidate.is_file() else None
+
+
 # Pillow warns above this many pixels and refuses twice as many.
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
