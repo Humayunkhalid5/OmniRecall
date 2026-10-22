@@ -123,9 +123,14 @@ jobs:
                   manager.download(model_id)
               print(model_id, "installed:", manager.is_installed(model_id))
           PY
+      - name: Real speech sample (LibriSpeech, CC BY 4.0)
+        run: |
+          url=$(curl -fsSL https://huggingface.co/api/datasets/hf-internal-testing/librispeech_asr_dummy/parquet/clean/validation | python3 -c "import json,sys; print(json.load(sys.stdin)[0])")
+          curl -fsSL -o "$RUNNER_TEMP/librispeech.parquet" "$url"
+          sha256sum "$RUNNER_TEMP/librispeech.parquet"
       - name: Speech-to-text accuracy (whisper.cpp base)
         working-directory: services/local-engine
-        run: uv run --frozen python ../../scripts/eval_transcription.py "$DATA/models"
+        run: uv run --frozen python ../../scripts/eval_transcription.py "$DATA/models" --librispeech "$RUNNER_TEMP/librispeech.parquet"
       - name: Relevance (hybrid, vector, keyword)
         working-directory: services/local-engine
         run: |

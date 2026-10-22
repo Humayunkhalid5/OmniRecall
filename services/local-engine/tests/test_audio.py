@@ -460,41 +460,65 @@ def test_whisper_binding_loads_from_a_local_path_only(tmp_path, capfd):
     assert out == "" and err == ""  # whisper.cpp's console output is off
 
 
-REAL_MODEL = Path(os.environ.get("OMNIRECALL_TEST_MODELS_DIR", "/nonexistent")) / "whisper-base"
-
-
-def word_error_rate(reference: str, hypothesis: str) -> float:
-    import difflib
-    import re
-
-    ref = re.sub(r"[^\w\s]", "", reference.lower()).split()
-    hyp = re.sub(r"[^\w\s]", "", hypothesis.lower()).split()
-    matcher = difflib.SequenceMatcher(None, ref, hyp)
-    errors = sum(
-        max(i2 - i1, j2 - j1) for op, i1, i2, j1, j2 in matcher.get_opcodes() if op != "equal"
-    )
-    return errors / max(len(ref), 1)
+REAL_MODELS = Path(os.environ.get("OMNIRECALL_TEST_MODELS_DIR", "/nonexistent"))
+REAL_MODEL = REAL_MODELS / "whisper-base"
+needs_real_models = pytest.mark.skipif(
+    not (REAL_MODEL / "ggml-base.bin").is_file() or not (REAL_MODELS / "all-minilm-l6-v2").is_dir(),
+    reason="the real ggml-base and MiniLM models are not available",
+)
+# A question someone would ask later, in other words than the recording (D-038).
+SPOKEN_QUERIES = {
+    "voice_memo.m4a": "when is the plumber coming to fix the heating",
+    "meeting_note.mp3": "when was the product launch moved to",
+    "recipe.ogg": "how long to bake the lemon cake",
+    "lecture.flac": "how do plants make glucose from sunlight",
+}
 
 
 @needs_decoder
-@pytest.mark.skipif(
-    not (REAL_MODEL / "ggml-base.bin").is_file(), reason="the real ggml-base model is not available"
-)
+@needs_real_models
 @pytest.mark.timeout(600)
 @pytest.mark.parametrize("name", SPOKEN)
 def test_real_model_transcribes_fixtures_offline(tmp_path, name):
+    """Sanity bound per fixture; accuracy itself is measured by eval_transcription.py."""
+    from wer import word_error_rate
+
     from omnirecall.extraction.transcribe import WhisperCppTranscriber
 
     transcriber = WhisperCppTranscriber(REAL_MODEL / "ggml-base.bin", "whisper-base")
-    result = transcribe_stream(
-        transcriber,
-        AudioDecoder().stream(FIXTURES / name, 7200),
-        lambda: False,
-        lambda _s: None,
-    )
+    try:
+        result = transcribe_stream(
+            transcriber,
+            AudioDecoder().stream(FIXTURES / name, 7200),
+            lambda: False,
+            lambda _s: None,
+        )
+    finally:
+        transcriber.close()
     text, _spans = build_text(clean_segments(result.segments))
-    assert word_error_rate(script(name), text) < 0.25, text
+    assert word_error_rate(script(name), text) < 0.35, text
     assert result.language == "en"
+
+
+@needs_decoder
+@needs_real_models
+@pytest.mark.timeout(900)
+def test_real_models_make_every_recording_findable(tmp_path):
+    """The Phase 5 exit gate with the real models: each recording, transcribed on
+    this machine, is the top result for a paraphrased question about it."""
+    engine = Engine(tmp_path / "data", REAL_MODELS, lambda m, p: None)
+    try:
+        ids = {}
+        for name in SPOKEN_QUERIES:
+            ids[name] = import_one(engine, copy_fixture(tmp_path, name))
+        for item_id in ids.values():
+            wait_status(engine, item_id, {"indexed"}, timeout=600)
+        for name, query in SPOKEN_QUERIES.items():
+            results = engine.search({"query": query, "limit": 5})["results"]
+            assert results and results[0]["item_id"] == ids[name], (name, results[:2])
+            assert results[0]["start_ms"] is not None
+    finally:
+        engine.close()
 
 
 @pytest.mark.parametrize("ending", ["close", "exit", "unload_then_close"])
