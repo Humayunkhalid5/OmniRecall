@@ -200,9 +200,19 @@ The whole-library build was slow for a different reason (OR-031). The queue capa
 | 40,000 chunks | stopped after 7 minutes: 30,000 items waiting for vectors, draining at about 25 items/s | 568 s, 70 items/s |
 | 100,000 chunks | 6650 s, 15 items/s | **1372 s, 73 items/s** |
 | Search p95 at 100,000 (hybrid, 156 queries) | 141.7-198.3 ms over three builds | 197.3 ms |
-| Peak engine RSS during the 100,000 build | 1223-1263 MB | 1294 MB |
+| Peak engine RSS over the build and 468 searches | 1223-1263 MB | 1294 MB; **844 MB** with D-044 |
 
-Peak memory during a bulk build is still about 1.3 GB; it is not the backlog, which is now held under 1,000 items, and remains open (OR-001).
+### Memory held after searches (REF-CI-LINUX)
+The peak was not the build: at 40,000 chunks the engine stayed near 700 MB while indexing and rose to about 925 MB over 100 searches. A raw LanceDB loop of 100 vector searches showed the cause: freed memory stays in glibc's per-thread malloc arenas, which LanceDB's search threads create (698 MB; 180 MB with `MALLOC_ARENA_MAX=2`). The engine now caps arenas at four on Linux (D-044).
+
+| Setting (150 raw vector searches, 40,000 chunks, two runs each) | RSS after | Median / p95 |
+|---|---|---|
+| glibc default | 758-773 MB | 25.4-27.1 ms / 58.9-66.1 ms |
+| 8 arenas | 322-346 MB | 29.1-29.2 ms / 37.3-38.5 ms |
+| **4 arenas (chosen)** | 236-287 MB | 30.7-33.4 ms / 39.5-45.1 ms |
+| 2 arenas | 176-198 MB | 39.8 ms / 47.4-49.4 ms |
+
+Through the engine at 40,000 chunks, 104 searches peaked at 478 MB instead of 925 MB. At 100,000 chunks the whole benchmark peaked at 844 MB instead of 1294 MB, with hybrid search p95 146.0 ms and a 1332 s build. macOS and Windows do not use glibc and are not measured here.
 
 ### Speech-to-text, greedy decoding against beam search (GH-UBUNTU, whisper.cpp `base`)
 | Set | Decoding | Corpus WER | Mean / worst per recording | Mean real-time factor |

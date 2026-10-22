@@ -372,3 +372,10 @@
 - **Docs updated:** `measurements.md`; `bugs.md` OR-031.
 - **Replaces:** none.
 
+### D-044 — Cap glibc malloc arenas at four on Linux
+- **Date:** 2026-10-22
+- **Decision:** `Engine` calls `mallopt(M_ARENA_MAX, 4)` before LanceDB and ONNX Runtime start their threads (`omnirecall/native.py`). It does nothing on macOS, Windows, or a Linux libc other than glibc.
+- **Reason:** LanceDB's search threads each got a malloc arena, and the memory freed after each search stayed in them; a library of 100,000 chunks peaked at 1.3 GB. Four arenas brought that to 844 MB, with search p95 better, not worse (median about 5 ms slower on raw vector searches; `measurements.md`). Two arenas saved a little more memory but slowed the median by about 13 ms.
+- **Docs updated:** `measurements.md`; `bugs.md` OR-001.
+- **Replaces:** none.
+
