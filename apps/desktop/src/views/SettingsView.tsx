@@ -29,8 +29,11 @@ export function SettingsView({ status, capture, refreshKey, onChanged }: Props) 
   );
 }
 
-// Audio transcription arrives in Phase 5; until then its model is not offered.
-const USABLE_KINDS: readonly string[] = ["embedding"];
+const USABLE_KINDS: readonly string[] = ["embedding", "transcription"];
+const MODEL_PURPOSE: Record<string, string> = {
+  embedding: "Meaning-based search",
+  transcription: "Turns imported audio notes into searchable text",
+};
 
 interface Progress {
   received: number;
@@ -138,9 +141,8 @@ function ModelsPanel({ onChanged }: { onChanged: () => void }) {
                 </span>
               </div>
               <p className="muted">
-                {model.kind === "embedding" ? "Meaning-based search" : "Audio transcription"} ·{" "}
-                {formatBytes(model.size_bytes)} · License{" "}
-                <span title={model.license_url}>{model.license}</span>
+                {MODEL_PURPOSE[model.kind] ?? model.kind} · {formatBytes(model.size_bytes)} ·
+                License <span title={model.license_url}>{model.license}</span>
               </p>
               <p className="muted small">Source: {model.download_url}</p>
               {p && (
@@ -186,6 +188,7 @@ const MB = 1024 * 1024;
 interface LimitsForm {
   max_file_mb: string;
   max_pdf_pages: string;
+  max_audio_minutes: string;
   results_shown: string;
 }
 
@@ -198,6 +201,7 @@ function LimitsPanel() {
     setForm({
       max_file_mb: String(Math.round(Number(s.max_file_bytes) / MB)),
       max_pdf_pages: String(s.max_pdf_pages),
+      max_audio_minutes: String(Math.round(Number(s.max_audio_seconds) / 60)),
       results_shown: String(s.results_shown),
     });
 
@@ -217,6 +221,7 @@ function LimitsPanel() {
       const result = await engine.updateSettings({
         max_file_bytes: Math.round(Number(form.max_file_mb) * MB),
         max_pdf_pages: Number(form.max_pdf_pages),
+        max_audio_seconds: Math.round(Number(form.max_audio_minutes) * 60),
         results_shown: Number(form.results_shown),
       });
       fill(result.settings);
@@ -256,6 +261,7 @@ function LimitsPanel() {
       >
         {field("max_file_mb", "Largest file to import (MB)", 1, 2048)}
         {field("max_pdf_pages", "Most PDF pages to read", 1, 10000)}
+        {field("max_audio_minutes", "Longest recording to transcribe (minutes)", 1, 720)}
         {field("results_shown", "Search results to show", 1, 200)}
         <div className="row-actions">
           <button type="submit" disabled={saving}>

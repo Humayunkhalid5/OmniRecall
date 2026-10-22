@@ -6,7 +6,10 @@ import { Notice } from "../components/Notice";
 import {
   describeError,
   formatBytes,
+  formatClock,
+  formatDuration,
   formatLocalTime,
+  languageName,
   sourceLabels,
   statusLabels,
 } from "../lib/format";
@@ -68,6 +71,7 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
 
   const item = detail?.item;
   const meta = item?.metadata ?? {};
+  const isAudio = meta.format === "audio";
   return (
     <aside className="detail" aria-label="Item details">
       <header className="detail-header">
@@ -138,6 +142,29 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
                 </dd>
               </>
             )}
+            {isAudio && typeof meta.duration_s === "number" && (
+              <>
+                <dt>Length</dt>
+                <dd>{formatDuration(meta.duration_s)}</dd>
+              </>
+            )}
+            {typeof meta.transcription_engine === "string" && (
+              <>
+                <dt>Transcribed by</dt>
+                <dd>
+                  {meta.transcription_model === "whisper-base"
+                    ? "Whisper base"
+                    : String(meta.transcription_model)}{" "}
+                  ({meta.transcription_engine}), on this device
+                </dd>
+              </>
+            )}
+            {isAudio && typeof meta.language === "string" && (
+              <>
+                <dt>Language</dt>
+                <dd>{languageName(meta.language)}</dd>
+              </>
+            )}
             {typeof meta.pages === "number" && (
               <>
                 <dt>Pages</dt>
@@ -160,7 +187,7 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
           <div className="detail-actions">
             {item.source_type === "file" && detail.source_exists && (
               <button type="button" onClick={openOriginal}>
-                Open original
+                {isAudio ? "Play recording" : "Open original"}
               </button>
             )}
             {item.source_type === "screenshot" && item.media_status === "present" && (
@@ -173,7 +200,7 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
             </button>
           </div>
           <h3>
-            Indexed text{" "}
+            {isAudio ? "Transcript" : "Indexed text"}{" "}
             <span className="muted">
               ({detail.chunk_count} passage{detail.chunk_count === 1 ? "" : "s"})
             </span>
@@ -181,6 +208,12 @@ export function ItemDetail({ itemId, onClose, onDeleted }: Props) {
           <div className="chunks">
             {detail.chunks.map((chunk) => (
               <p key={chunk.id} className="chunk">
+                {typeof chunk.start_ms === "number" && (
+                  <span className="timestamp">
+                    {formatClock(chunk.start_ms)}
+                    {typeof chunk.end_ms === "number" && `–${formatClock(chunk.end_ms)}`}
+                  </span>
+                )}
                 {chunk.text}
               </p>
             ))}

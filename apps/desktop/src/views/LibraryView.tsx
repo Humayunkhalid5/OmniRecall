@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { engine, EngineCallError } from "../api/engine";
+import { engine, EngineCallError, type EngineNotification } from "../api/engine";
 import type { FormatInfo, ImportSummary, Item, ItemStatus } from "../api/types";
 import { Notice } from "../components/Notice";
+import { useEngineEvents } from "../hooks/useEngine";
 import { describeError, formatLocalTime, sourceLabels, statusLabels } from "../lib/format";
 
 interface Props {
@@ -22,6 +23,23 @@ const FILTERS: { value: Filter; label: string; status?: ItemStatus[] }[] = [
 ];
 
 const PAGE = 100;
+
+interface Progress {
+  stage: string;
+  percent?: number;
+}
+
+const stageLabels: Record<string, string> = {
+  extracting: "Reading",
+  transcribing: "Transcribing",
+  chunking: "Splitting",
+  embedding: "Indexing",
+};
+
+function sourceOf(item: Item): string {
+  if (item.metadata.format === "audio") return "Audio";
+  return sourceLabels[item.source_type] ?? item.source_type;
+}
 
 export function summarizeImport(summary: ImportSummary): string {
   const parts: string[] = [];
@@ -45,9 +63,28 @@ export function LibraryView({
   const [limit, setLimit] = useState(PAGE);
   const [formats, setFormats] = useState<FormatInfo[]>([]);
   const [ocrAvailable, setOcrAvailable] = useState(true);
+  const [transcriptionAvailable, setTranscriptionAvailable] = useState(true);
+  const [progress, setProgress] = useState<Record<string, Progress>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
+
+  const progressOf = (itemId: string) => {
+    const p = progress[itemId];
+    if (!p) return null;
+    const label = stageLabels[p.stage] ?? p.stage;
+    return (
+      <span className="status-reason">
+        {label}
+        {p.percent !== undefined && (
+          <>
+            {" "}
+            <progress max={100} value={p.percent} aria-label={`${label} progress`} /> {p.percent}%
+          </>
+        )}
+      </span>
+    );
+  };
 
   const load = useCallback(
     () =>
@@ -77,11 +114,31 @@ export function LibraryView({
     engine
       .formats()
       .then((f) => {
-        setFormats([...f.documents, ...(f.images ?? [])]);
+        setFormats([...f.documents, ...(f.images ?? []), ...(f.audio ?? [])]);
         setOcrAvailable(f.ocr_available ?? false);
+        setTranscriptionAvailable(f.transcription_available ?? false);
       })
       .catch(() => setFormats([]));
   }, []);
+
+  useEngineEvents(
+    useCallback((note: EngineNotification) => {
+      const id = note.params.item_id as string | undefined;
+      if (!id) return;
+      if (note.method === "items.progress") {
+        const percent = note.params.percent;
+        setProgress((p) => ({
+          ...p,
+          [id]: {
+            stage: String(note.params.stage),
+            percent: typeof percent === "number" ? percent : undefined,
+          },
+        }));
+      } else {
+        setProgress((p) => Object.fromEntries(Object.entries(p).filter(([key]) => key !== id)));
+      }
+    }, []),
+  );
 
   const runImport = async (kind: "files" | "folder") => {
     setBusy(kind);
@@ -215,7 +272,7 @@ export function LibraryView({
                     {item.source_label || sourceLabels[item.source_type]}
                   </button>
                 </td>
-                <td>{sourceLabels[item.source_type]}</td>
+                <td>{sourceOf(item)}</td>
                 <td>
                   <time dateTime={item.captured_at}>{formatLocalTime(item.captured_at)}</time>
                 </td>
@@ -223,6 +280,7 @@ export function LibraryView({
                   <span className={`status status-${item.status}`}>
                     {statusLabels[item.status]}
                   </span>
+                  {item.status === "processing" && progressOf(item.id)}
                   {item.status === "failed" && (
                     <span className="status-reason">{describeError(item.error_code)}</span>
                   )}
@@ -278,6 +336,12 @@ export function LibraryView({
             {ocrAvailable
               ? "Scanned PDFs without a text layer are not read yet."
               : "Tesseract is not installed, so images cannot be imported."}
+          </p>
+          <p className="muted">
+            Audio is transcribed on this computer with Whisper, in recordings up to the length set
+            in Settings. Opus recordings (.opus, WebM) are not supported yet.{" "}
+            {!transcriptionAvailable &&
+              "Install the speech model in Settings → Models before importing audio."}
           </p>
         </details>
       )}

@@ -89,6 +89,7 @@ Every adapter returns a common `IngestionEnvelope`: stable ID, source type, capt
 - Documents: use format-specific extractors; reject unsupported types with a clear error.
 - Images/screenshots: OCR locally; store OCR engine/version for debugging. Candidates for the Phase 0 spike: RapidOCR (ONNX models, reuses ONNX Runtime so the app carries one inference runtime) versus Tesseract 5. Choose after the license check (OR-006) and a quality test on the fixture corpus; record the choice in `decisions.md`.
 - Audio: transcribe locally; retain timestamps if provided by the engine. Phase 0 candidate: `whisper.cpp` with a `base` model, validated for license, speed, and accuracy before adoption.
+  - Phase 5 (D-031 to D-034): files are decoded to 16 kHz mono by the bundled `omnirecall-audio-decode` helper (symphonia; WAV, MP3, M4A, AAC, FLAC, Ogg Vorbis, AIFF, CAF; not Opus) and transcribed by whisper.cpp `base` in 5-minute windows split at silence. The transcript is cleaned of non-speech tags and repetition loops, and each chunk keeps `start_ms`/`end_ms`. Without the speech model, audio items fail with `transcription_model_missing` and are queued again once it is installed.
 - Treat all extracted text as untrusted user data.
 
 ### Chunking and embeddings
@@ -114,7 +115,7 @@ Efficiency rules:
 - Provide index rebuild and orphan cleanup tools.
 
 ### Retrieval
-1. Validate query and filters.
+1. Validate query and filters (date range, source types, and formats such as `audio`, D-034).
 2. Embed query locally.
 3. Retrieve top-K vector candidates.
 4. Retrieve top-K lexical candidates via FTS5.
@@ -169,6 +170,7 @@ This section is the **only** schema definition. Other documents refer here inste
 - `text TEXT NOT NULL`
 - `start_offset INTEGER`
 - `end_offset INTEGER`
+- `start_ms INTEGER`, `end_ms INTEGER` (position in a recording for transcript chunks, otherwise NULL; migration 0002, D-033)
 - `text_hash TEXT NOT NULL` (SHA-256 of normalized chunk text; used by the embedding cache)
 - `chunker_version TEXT NOT NULL`
 - `embedding_model TEXT NOT NULL`

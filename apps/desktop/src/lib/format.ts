@@ -41,7 +41,7 @@ export const statusLabels: Record<string, string> = {
 const errorMessages: Record<string, string> = {
   source_missing: "The original file was moved or deleted.",
   unsupported_format: "This file type is not supported.",
-  limit_exceeded: "The file is larger than the configured limit.",
+  limit_exceeded: "The file is over a configured limit (size, pages, or recording length).",
   extraction_empty: "No readable text was found.",
   malformed_file: "The file appears to be damaged.",
   encrypted_file: "Password-protected files are not supported.",
@@ -52,6 +52,9 @@ const errorMessages: Record<string, string> = {
   ocr_unavailable: "Text recognition (Tesseract) is not installed.",
   ocr_failed: "Text recognition failed for this image.",
   ocr_timeout: "Text recognition took too long.",
+  transcription_model_missing: "The speech model is not installed. Set it up in Settings → Models.",
+  audio_decoder_unavailable: "The audio decoder is missing from this installation.",
+  unsupported_codec: "This audio encoding is not supported (for example Opus).",
 };
 
 export function describeError(code: string | null | undefined): string {
@@ -59,4 +62,35 @@ export function describeError(code: string | null | undefined): string {
   return (
     errorMessages[code] ?? (code.startsWith("internal") ? "An internal error occurred." : code)
   );
+}
+
+/** A position in a recording, such as 4:05 or 1:02:07. */
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`;
+}
+
+/** A recording length, such as "8 s", "4 min 5 s", or "1 h 2 min". */
+export function formatDuration(seconds: number): string {
+  const total = Math.round(seconds);
+  if (total < 60) return `${total} s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  const rest = total % 60;
+  return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+}
+
+/** The language name for a Whisper language code, in the user's language. */
+export function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(undefined, { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
 }

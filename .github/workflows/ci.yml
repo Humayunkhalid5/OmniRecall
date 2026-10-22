@@ -30,11 +30,25 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng strace; fi
           if [ "$RUNNER_OS" = "macOS" ]; then brew install tesseract; fi
           if [ "$RUNNER_OS" = "Windows" ]; then choco install tesseract -y --no-progress; echo "C:\Program Files\Tesseract-OCR" >> "$GITHUB_PATH"; fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Audio decoder (checks, tests, release build used by the engine tests)
+        working-directory: services/audio-decoder
+        shell: bash
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo build --release
       - run: uv sync --frozen --python 3.12
       - run: uv run ruff format --check .
       - run: uv run ruff check .
       - run: uv run mypy
       - run: uv run pytest -q
+        env:
+          # Every decoder-backed test must run in CI, not skip.
+          OMNIRECALL_REQUIRE_AUDIO_DECODER: "1"
 
   desktop:
     name: Desktop (${{ matrix.os }})

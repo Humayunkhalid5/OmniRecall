@@ -32,10 +32,13 @@ class SearchFilters:
     captured_before: str | None = None
     app: str | None = None
     path_prefix: str | None = None
+    # Imported file kinds, from item metadata: "audio", "image", "pdf", ...
+    formats: list[str] = field(default_factory=list)
 
     def active(self) -> bool:
         return bool(
             self.source_types
+            or self.formats
             or self.captured_after
             or self.captured_before
             or self.app
@@ -44,6 +47,8 @@ class SearchFilters:
 
     def accepts(self, item: Item) -> bool:
         if self.source_types and item.source_type not in self.source_types:
+            return False
+        if self.formats and item.metadata.get("format") not in self.formats:
             return False
         captured = parse_utc(item.captured_at)
         if self.captured_after and captured < parse_utc(self.captured_after):
@@ -293,6 +298,8 @@ class SearchService:
             "app": item.metadata.get("app"),
             "snippet": snippet,
             "highlights": highlights,
+            "start_ms": chunk.start_ms,
+            "end_ms": chunk.end_ms,
             "score": round(cand.score, 6),
             "similarity": None if similarity is None else round(similarity, 4),
             "matched_by": matched_by,

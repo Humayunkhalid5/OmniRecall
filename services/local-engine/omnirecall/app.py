@@ -22,9 +22,11 @@ from omnirecall.embeddings.minilm import MODEL_ID as MINILM_ID
 from omnirecall.embeddings.minilm import MiniLMEmbedder
 from omnirecall.errors import EngineError
 from omnirecall.export import Exporter
-from omnirecall.extraction.documents import DOCUMENT_FORMATS, IMAGE_FORMATS
+from omnirecall.extraction.audio import AudioDecoder
+from omnirecall.extraction.documents import AUDIO_FORMATS, DOCUMENT_FORMATS, IMAGE_FORMATS
 from omnirecall.extraction.ocr import OcrEngine, TesseractOcr
-from omnirecall.ingestion.pipeline import Pipeline
+from omnirecall.extraction.transcribe import Transcriber, WhisperCppTranscriber
+from omnirecall.ingestion.pipeline import TRANSCRIPTION_MODEL_MISSING, Pipeline
 from omnirecall.ingestion.service import IngestionService
 from omnirecall.jobs.queue import JobRunner
 from omnirecall.models import ModelManager
@@ -46,6 +48,9 @@ RETENTION_INTERVAL_S = 3600
 SHELL_MANAGED_SETTINGS = frozenset({"capture_paused"})
 # Settings the shell's screenshot watcher follows; a change re-sends capture.state.
 WATCHER_SETTINGS = ("screenshot_interval_s", "pause_on_idle_s", "screenshot_phash_threshold")
+WHISPER_ID = "whisper-base"
+# Failures that a model install can fix; those items are retried after it.
+MODEL_MISSING_CODES = ("model_missing", TRANSCRIPTION_MODEL_MISSING)
 
 
 def _dir_bytes(path: Path) -> int:
@@ -86,6 +91,8 @@ class Engine:
         embedder: Embedder | None = None,
         start_workers: bool = True,
         ocr: OcrEngine | None = None,
+        transcriber: Transcriber | None = None,
+        audio: AudioDecoder | None = None,
     ) -> None:
         self.data_dir = data_dir
         self.models_dir = models_dir or data_dir / "models"
@@ -116,6 +123,10 @@ class Engine:
 
         self.models = ModelManager(self.models_dir)
         self.embedder: Embedder = embedder or MiniLMEmbedder(self.models.model_dir(MINILM_ID))
+        self.audio = audio or AudioDecoder()
+        self.transcriber: Transcriber = transcriber or WhisperCppTranscriber(
+            self.models.model_file(WHISPER_ID), WHISPER_ID
+        )
         self.vectors = VectorStore(
             data_dir / "vectors",
             vector_table_name(self.embedder.model_id, self.embedder.dimension),
@@ -148,6 +159,8 @@ class Engine:
             lambda: self._settings,
             notify,
             ocr=self.ocr,
+            audio=self.audio,
+            transcriber=self.transcriber,
             vectors_ready=self._vector_wake.set,
         )
         self.runner.register(STAGE_PROCESS, self.pipeline.process)
@@ -198,6 +211,7 @@ class Engine:
         for thread in (self._maintenance, self._vector_thread):
             if thread:
                 thread.join(timeout=30)
+        self.transcriber.close()
         self.db.close()
 
     def _screenshot_discarded(self, _item: Item, reason: str) -> None:
@@ -280,6 +294,7 @@ class Engine:
                 if time.monotonic() - last_unload_check > 30:
                     last_unload_check = time.monotonic()
                     self.embedder.unload_if_idle(self._settings.model_idle_unload_s)
+                    self.transcriber.unload_if_idle(self._settings.model_idle_unload_s)
             except Exception as exc:  # noqa: BLE001 - retried on the next tick
                 logs.error("maintenance_failed", reason=type(exc).__name__)
 
@@ -365,6 +380,12 @@ class Engine:
                 "installed": model_installed,
                 "loaded": self.embedder.loaded() if model_installed else False,
             },
+            "transcription": {
+                "id": self.transcriber.model_id,
+                "installed": self.transcriber.available(),
+                "loaded": self.transcriber.loaded(),
+                "decoder_available": self.audio.available(),
+            },
             "index": {
                 "chunks": self.repo.chunk_count(),
                 "vectors": self.vectors.count(),
@@ -419,6 +440,8 @@ class Engine:
                     "text": c.text,
                     "start": c.start_offset,
                     "end": c.end_offset,
+                    "start_ms": c.start_ms,
+                    "end_ms": c.end_ms,
                 }
                 for c in chunks[:CHUNK_PREVIEW_LIMIT]
             ],
@@ -630,8 +653,10 @@ class Engine:
 
     def _requeue_model_missing(self) -> None:
         """Items that failed only because the model was missing are retried."""
+        marks = ",".join("?" * len(MODEL_MISSING_CODES))
         rows = self.db.conn.execute(
-            "SELECT id FROM items WHERE status = 'failed' AND error_code = 'model_missing'"
+            f"SELECT id FROM items WHERE status = 'failed' AND error_code IN ({marks})",  # noqa: S608
+            MODEL_MISSING_CODES,
         ).fetchall()
         for row in rows:
             self.repo.transition(row["id"], ItemStatus.QUEUED)
@@ -649,5 +674,8 @@ class Engine:
         return {
             "documents": view(DOCUMENT_FORMATS),
             "images": view(IMAGE_FORMATS),
+            "audio": view(AUDIO_FORMATS),
             "ocr_available": self.ocr.available(),
+            "transcription_available": self.transcriber.available() and self.audio.available(),
+            "audio_decoder_available": self.audio.available(),
         }

@@ -23,7 +23,16 @@ export interface ItemDetail {
   item: Item;
   source_exists: boolean;
   chunk_count: number;
-  chunks: { id: string; ordinal: number; text: string; start: number | null; end: number | null }[];
+  chunks: {
+    id: string;
+    ordinal: number;
+    text: string;
+    start: number | null;
+    end: number | null;
+    /** Position in the recording, for audio transcripts. */
+    start_ms?: number | null;
+    end_ms?: number | null;
+  }[];
 }
 
 export type Relevance = "strong" | "moderate" | "weak";
@@ -38,6 +47,9 @@ export interface SearchResult {
   app: string | null;
   snippet: string;
   highlights: [number, number][];
+  /** Where the passage is in the recording, for audio transcripts. */
+  start_ms?: number | null;
+  end_ms?: number | null;
   score: number;
   similarity: number | null;
   matched_by: "keyword" | "semantic" | "both";
@@ -60,6 +72,7 @@ export interface EngineStatus {
   jobs: Record<string, number>;
   queue: { capacity: number; active: number; workers_busy: number; workers: number };
   model: { id: string; installed: boolean; loaded: boolean };
+  transcription?: { id: string; installed: boolean; loaded: boolean; decoder_available: boolean };
   index: { chunks: number; vectors: number; table: string; pending_vector_writes: number };
   storage: {
     data_dir: string;
@@ -149,7 +162,10 @@ export interface ScreenshotStatus {
 export interface Formats {
   documents: FormatInfo[];
   images?: FormatInfo[];
+  audio?: FormatInfo[];
   ocr_available?: boolean;
+  transcription_available?: boolean;
+  audio_decoder_available?: boolean;
 }
 
 export interface Exclusion {

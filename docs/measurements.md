@@ -42,7 +42,7 @@ RapidOCR's errors were mostly dropped spaces between words (`Thequarterlyreviewm
 Command: `python scripts/spike_embeddings.py <models>/all-minilm-l6-v2`.
 
 ### Transcription
-`pywhispercpp` 1.5.1 loads its native whisper.cpp build (AVX2, OpenMP). The `ggml-base` model could not be downloaded from this build environment (huggingface.co is blocked by its network policy), so accuracy and speed are **not yet measured**. Tracked for Phase 5.
+`pywhispercpp` 1.5.1 loads its native whisper.cpp build (AVX2, OpenMP). The `ggml-base` model could not be downloaded from this build environment (huggingface.co is blocked by its network policy), so accuracy and speed are **not yet measured**. Tracked for Phase 5 (still not measured at the end of Phase 5; see below).
 
 ## Phase 2 (2026-10-21, REF-CI-LINUX)
 
@@ -94,3 +94,19 @@ From intake to `indexed`, a new frame took 0.46-1.53 s over 6 frames (OCR plus e
 - 1 dropped after OCR as sensitive.
 
 CPU and battery impact on a real laptop are not measured here (Phase 6).
+
+## Phase 5 (2026-10-22, REF-CI-LINUX)
+
+### Audio decoder (`omnirecall-audio-decode` 0.1.0, release build, 2.9 MB)
+| Input | Decode and resample to 16 kHz mono | Peak memory (helper) |
+|---|---|---|
+| 1-hour MP3, 44.1 kHz stereo, 128 kb/s | 4.0 s | 10 MB |
+| 1-hour M4A (AAC), 48 kHz mono, 96 kb/s | 3.7 s | 11 MB |
+| 8-10 s spoken fixtures (M4A, WAV, MP3, Ogg Vorbis, FLAC) | 4-11 ms each | |
+
+The one-hour files were synthetic tones made with `ffmpeg -f lavfi -i sine=…`. Timing came from a Python `subprocess.run` of `decode <file> 7200`, with the peak taken from `getrusage(RUSAGE_CHILDREN)`.
+
+The resampler test checks each output length and pitch: a 440 Hz tone at 8, 22.05, 44.1, and 48 kHz gives 870-890 zero crossings per second after resampling.
+
+### Transcription
+**Not measured.** The `ggml-base.bin` model could not be downloaded from this environment, and it had not reached the project files by the end of the phase. The real-model accuracy test (`test_real_model_transcribes_fixtures_offline`, word error rate against the fixture scripts) and timing on real hardware run once the model is available (`OMNIRECALL_TEST_MODELS_DIR`). The engine tests use a randomly initialized whisper.cpp model of about 8 MB. It shows that the binding, windowing, and shutdown work, but it says nothing about accuracy or speed.

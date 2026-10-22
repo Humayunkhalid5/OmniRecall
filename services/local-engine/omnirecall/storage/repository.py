@@ -76,6 +76,9 @@ class ChunkRow:
     text_hash: str
     chunker_version: str
     embedding_model: str
+    # Position in the recording, for audio transcripts.
+    start_ms: int | None = None
+    end_ms: int | None = None
 
 
 @dataclass
@@ -106,7 +109,7 @@ ITEM_COLUMNS = (
 
 CHUNK_COLUMNS = (
     "id, item_id, ordinal, text, start_offset, end_offset, text_hash, chunker_version, "
-    "embedding_model"
+    "embedding_model, start_ms, end_ms"
 )
 
 
@@ -321,8 +324,7 @@ class Repository:
 
     def chunks_for_item(self, item_id: str) -> list[ChunkRow]:
         rows = self.db.conn.execute(
-            "SELECT id, item_id, ordinal, text, start_offset, end_offset, text_hash, "
-            "chunker_version, embedding_model FROM chunks WHERE item_id = ? ORDER BY ordinal",
+            f"SELECT {CHUNK_COLUMNS} FROM chunks WHERE item_id = ? ORDER BY ordinal",  # noqa: S608
             (item_id,),
         )
         return [ChunkRow(**dict(r)) for r in rows]
@@ -361,15 +363,17 @@ class Repository:
             for chunk in chunks:
                 if existing.get(chunk.id) == chunk.text_hash:
                     conn.execute(
-                        "UPDATE chunks SET embedding_model = ? WHERE id = ?",
-                        (chunk.embedding_model, chunk.id),
+                        "UPDATE chunks SET embedding_model = ?, start_ms = ?, end_ms = ? "
+                        "WHERE id = ?",
+                        (chunk.embedding_model, chunk.start_ms, chunk.end_ms, chunk.id),
                     )
                 else:
                     conn.execute("DELETE FROM chunks WHERE id = ?", (chunk.id,))
                     conn.execute(
                         "INSERT INTO chunks (id, item_id, ordinal, text, start_offset, end_offset, "
-                        "text_hash, chunker_version, embedding_model, created_at) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        "text_hash, chunker_version, embedding_model, created_at, "
+                        "start_ms, end_ms) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                         (
                             chunk.id,
                             chunk.item_id,
@@ -381,6 +385,8 @@ class Repository:
                             chunk.chunker_version,
                             chunk.embedding_model,
                             now,
+                            chunk.start_ms,
+                            chunk.end_ms,
                         ),
                     )
                 entries.append(self._outbox(conn, chunk.id, "upsert", vector_table, now))
@@ -416,8 +422,7 @@ class Repository:
         last = ""
         while True:
             rows = self.db.conn.execute(
-                "SELECT id, item_id, ordinal, text, start_offset, end_offset, text_hash, "
-                "chunker_version, embedding_model FROM chunks WHERE id > ? ORDER BY id LIMIT ?",
+                f"SELECT {CHUNK_COLUMNS} FROM chunks WHERE id > ? ORDER BY id LIMIT ?",  # noqa: S608
                 (last, batch_size),
             ).fetchall()
             if not rows:

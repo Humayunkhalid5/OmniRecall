@@ -36,3 +36,12 @@ Copies dropped as too large, excluded, unknown-app, or possibly secret are not w
   - In the live run, a terminal showing a GitHub token was dropped as `sensitive`. A search of the data folder found no trace of the token.
 - **Logs:** they record outcome codes only (`screenshot_capture` with a status). `test_logs_never_contain_ocr_text` checks that OCR text, app names, and queries never appear. In the live run, the engine log held no captured words.
 - **Network:** Tesseract runs as a local child process. The traced audit session (`test_engine_session_makes_no_network_calls`) now includes image import and a screenshot, and strace follows child processes.
+
+## Audio notes (Phase 5)
+
+- **What is read:** only files the user imports. There is no microphone recording.
+- **Decoder:** `omnirecall-audio-decode` runs as a child process with fixed arguments and no shell. It opens only the named file, writes samples to a pipe, and has no network code (it depends on no network crate). It is killed if the item is cancelled or the engine stops.
+- **Speech model:** whisper.cpp loads `models/whisper-base/ggml-base.bin` from a local path only. `test_whisper_models_are_never_loaded_by_name` checks that the engine never passes a model name, which would make `pywhispercpp` download it.
+- **Logs:** whisper.cpp prints transcript text and model details to stderr by default. The engine routes its log output to a function that discards it and turns off every `print_*` option. `test_audio.py` checks that a transcription writes nothing to stdout or stderr and that the engine log holds no transcript words.
+- **Network:** the traced audit session (`test_engine_session_makes_no_network_calls`) now imports an audio file, and strace follows the decoder child process. It passes.
+- **Deletion:** deleting an audio item removes its transcript, chunks, and vectors. The original recording is never copied or touched.

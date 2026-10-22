@@ -41,6 +41,29 @@ def test_migrations_apply_once(tmp_path):
     assert db.conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
+def test_phase_4_database_upgrades_and_keeps_its_chunks(tmp_path, monkeypatch):
+    """A version 1 database (Phases 1-4) gains chunk timestamps; old chunks keep NULL."""
+    from omnirecall.storage import db as db_module
+
+    first_only = db_module._migrations()[:1]
+    monkeypatch.setattr(db_module, "_migrations", lambda: first_only)
+    old, repo, _vectors, _embedder = make_stores(tmp_path)
+    assert old.schema_version() == 1
+    item_id = new_text_item(repo, "kept across the upgrade")
+    old.conn.execute(
+        "INSERT INTO chunks (id, item_id, ordinal, text, start_offset, end_offset, text_hash, "
+        "chunker_version, embedding_model, created_at) "
+        "VALUES ('c1', ?, 0, 'kept across the upgrade', 0, 23, 'h', 'v', 'm', 'now')",
+        (item_id,),
+    )
+    old.close()
+    monkeypatch.undo()
+    upgraded = Database(tmp_path / "db" / "omnirecall.sqlite")
+    assert upgraded.migrate() == list(range(2, LATEST_SCHEMA_VERSION + 1))
+    row = upgraded.conn.execute("SELECT text, start_ms, end_ms FROM chunks").fetchone()
+    assert tuple(row) == ("kept across the upgrade", None, None)
+
+
 def test_newer_schema_is_refused(tmp_path):
     db = Database(tmp_path / "x.sqlite")
     db.migrate()
