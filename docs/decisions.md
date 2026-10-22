@@ -350,3 +350,18 @@
 - **Reason:** byte-for-byte reproducible builds are not verified (PyInstaller and the platform bundlers embed timestamps and paths), so the release instead records exactly which inputs built it and lets anyone check that an installer came from this repository's workflow at that commit.
 - **Docs updated:** `release.md`; `beta.md`; `README.md`.
 - **Replaces:** none.
+
+### D-041 — Speech-to-text keeps greedy decoding
+- **Date:** 2026-10-22
+- **Decision:** whisper.cpp keeps greedy decoding (`BEAM_SIZE = 1` in `extraction/transcribe.py`). Beam search is an option of the transcriber, and the `Real models` CI job measures the other setting on every run, so the choice can be revisited on data.
+- **Reason:** on the same 73 LibriSpeech recordings, beam 5 lowered corpus WER from 9.8% to 9.4%, but the mean per recording went from 12.1% to 12.3%, one recording went to 100% wrong, and transcription took about 8% longer. On the espeak-ng fixtures it went from 12.0% to 9.1%. A 0.4-point change on 481 seconds of speech, with one recording made much worse, is not a clear gain (`measurements.md`, improvement pass).
+- **Docs updated:** `measurements.md`.
+- **Replaces:** none.
+
+### D-042 — Windows Tesseract is a static vcpkg build
+- **Date:** 2026-10-22
+- **Decision:** the Windows installer ships a single `tesseract.exe` built by `scripts/build_tesseract_windows.py`: vcpkg at a pinned commit, triplet `x64-windows-static`, with vcpkg's own tesseract port changed to build without libcurl and libarchive. LibTIFF in vcpkg is built without JBIG-KIT. English data is `tessdata_fast` 4.1.0, checked by SHA-256 (the file Debian and Homebrew ship). The build fails on any library outside a reviewed permissive list, and packaging fails if `tesseract.exe` imports any DLL that is not part of Windows. The release workflow caches vcpkg's binary packages.
+- **Reason:** the UB Mannheim build used before loaded libcurl and, through it and LibTIFF, five copyleft DLLs (OR-030). OmniRecall passes Tesseract a local file and plain English data, so neither URL input nor zipped models are needed. The result is one executable with ten permissive libraries, and the Windows installer is 121 MiB instead of 144 MiB.
+- **Docs updated:** `licenses.md`; `release.md`; `third_party_licenses/README.md`; `bugs.md` OR-030.
+- **Replaces:** the Windows part of D-037 (UB Mannheim build from Chocolatey).
+

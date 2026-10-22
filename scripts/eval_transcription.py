@@ -1,6 +1,7 @@
 """Speech-to-text accuracy and speed with the real whisper.cpp `base` model.
 
 Usage: python scripts/eval_transcription.py <models_dir> [--librispeech FILE.parquet]
+       [--beam-size N]
 <models_dir> holds `whisper-base/ggml-base.bin`, installed by the engine's
 ModelManager.
 
@@ -23,7 +24,11 @@ from pathlib import Path
 
 import numpy as np
 from omnirecall.extraction.audio import SAMPLE_RATE, AudioDecoder
-from omnirecall.extraction.transcribe import WhisperCppTranscriber, transcribe_stream
+from omnirecall.extraction.transcribe import (
+    BEAM_SIZE,
+    WhisperCppTranscriber,
+    transcribe_stream,
+)
 from omnirecall.extraction.transcript import build_text, clean_segments
 
 TESTS = Path(__file__).resolve().parents[1] / "services/local-engine/tests"
@@ -75,6 +80,7 @@ def run(
             "language": result.language,
             "transcribe_s": round(elapsed, 2),
             "real_time_factor": round(elapsed / seconds, 3),
+            "beam_size": transcriber.beam_size,
         }
         rows.append(row)
         # Fixture scripts and LibriSpeech are public test text, so printing them is safe.
@@ -86,6 +92,7 @@ def summary(label: str, rows: list[dict]) -> dict:
     words = sum(r["words"] for r in rows)
     return {
         "summary": label,
+        "beam_size": rows[0]["beam_size"] if rows else None,
         "cases": len(rows),
         # Corpus WER weights each case by its length, as speech benchmarks report it.
         "corpus_wer": round(
@@ -105,6 +112,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("models_dir", type=Path)
     parser.add_argument("--librispeech", type=Path)
+    parser.add_argument("--beam-size", type=int, default=BEAM_SIZE, help="1 is greedy")
     args = parser.parse_args()
     model = args.models_dir / "whisper-base" / "ggml-base.bin"
     if not model.is_file():
@@ -112,7 +120,7 @@ def main() -> None:
     decoder = AudioDecoder()
     if not decoder.available():
         sys.exit("audio decoder not built")
-    transcriber = WhisperCppTranscriber(model, "whisper-base")
+    transcriber = WhisperCppTranscriber(model, "whisper-base", beam_size=args.beam_size)
     try:
         fixtures = [
             (n, FIXTURES / n, (FIXTURES / (Path(n).stem + ".txt")).read_text().strip())

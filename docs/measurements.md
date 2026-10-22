@@ -135,7 +135,7 @@ Downloaded through the engine's own verified `ModelManager` in the `Real models`
 | Metric | Result |
 |---|---|
 | Search median / p95 / max (hybrid, 156 queries, end to end through `Engine.search`) | **126.8 ms / 157.6 ms / 203.1 ms** (target: p95 under 1 s, design §11) |
-| Index build (100,000 synthetic chunks of about 480 characters, until every item is `indexed`) | 6507 s, about 15 chunks/s. Other builds and test runs shared the machine for much of this time, so it is an upper bound |
+| Index build (100,000 synthetic chunks of about 480 characters, until every item is `indexed`) | 6507 s, about 15 chunks/s. Other builds and test runs shared the machine for much of this time, so it is an upper bound. Adding to a library this size is not slower than to a small one (improvement pass below) |
 | SQLite database (with FTS5) | 227 MB |
 | LanceDB vectors (after compaction) | 162 MB |
 | Peak engine RSS during bulk indexing | 1358 MB |
@@ -161,7 +161,7 @@ Label calibration (hybrid): **strong** relevant 100% of the time (n = 44), **pos
 |---|---|---|---|---|---|
 | .deb | REF-CI-LINUX (built locally) and GH-UBUNTU 22.04 | 258.9 MiB (271,447,680 bytes) | system package (dependency) | about 1.15 s | all passed; data kept after removal |
 | .dmg | GH-MACOS | 202.7 MiB (212,570,519 bytes) | bundled 5.5.3, used after Homebrew's was uninstalled | 999 ms | all passed; data kept |
-| NSIS setup.exe | GH-WINDOWS | 143.7 MiB (150,671,640 bytes) | bundled 5.5.3.20260724, used after Chocolatey's was uninstalled | 1642 ms | all passed; data kept in `%APPDATA%` |
+| NSIS setup.exe | GH-WINDOWS | 121.0 MiB (126,854,661 bytes); 143.7 MiB with the Phase 6 UB Mannheim Tesseract | bundled static 5.5.3 (D-042); no other Tesseract on the runner | 2351 ms and 2791 ms in two runs of the same job (1642 ms in Phase 6) | all passed; data kept in `%APPDATA%` |
 
 "Engine ready" is from spawning the installed engine to its first `health` answer, on an empty data folder, as measured by `smoke_engine.py`. The installers do not contain models (83 MB search model, 148 MB speech model, downloaded on request).
 
@@ -172,3 +172,31 @@ Label calibration (hybrid): **strong** relevant 100% of the time (n = 44), **pos
 | Search model loaded, after indexing and searching | 382 MB |
 
 Phase 0's 24 MB was the engine skeleton run from source, before the storage, search, and extraction libraries (LanceDB, PyArrow, ONNX Runtime, whisper.cpp) were added. 159 MB is the idle figure for the engine as shipped. The search model is unloaded after 5 minutes idle; the speech model likewise.
+
+## Improvement pass (2026-10-22)
+
+### Memory on a large library (REF-CI-LINUX, a copy of the 100,000-chunk data folder, real MiniLM model)
+Resident memory after each stage of starting the engine and adding 200 new items:
+
+| Stage | Before | After |
+|---|---|---|
+| Engine set up | 138 MB | 138 MB |
+| Start-up reconciliation done (peak) | 645 MB (676 MB) | 260 MB (333 MB) |
+| 200 items indexed (peak) | 921 MB (938 MB) | 555 MB (562 MB) |
+
+The consistency check read the whole vector table, vectors included, to collect chunk IDs, and did so three times at start-up; it now reads only the ID column, and the damage check reads the table in batches of 4,096 rows.
+
+Embedding (ONNX Runtime 1.31, 4 threads, 60 batches of 32 texts of 5 to 200 words): turning off the memory pattern planner lowered peak memory from 614-616 MB to 420-421 MB, with times of 26.0-27.0 s against 26.9-27.1 s (two runs each). Turning off the CPU memory arena instead saved more (405 MB) but was 44% slower, so it was not used.
+
+### Adding items to a large library (REF-CI-LINUX)
+500 new, unique items added to the 100,000-chunk library, timed until every one was indexed (`scripts/bench_add.py`): 72.2 items/s with scalar indexes on the vector table, 74.2 items/s without them, and 77.8 items/s with the memory changes above (peak 596 MB). At 10,000 chunks the rate is about 70 items/s. The scalar indexes were dropped because they made no end-to-end difference. The 15 chunks/s figure in Phase 6 is a whole-library build on a shared machine, not the cost of adding to a large library.
+
+### Speech-to-text, greedy decoding against beam search (GH-UBUNTU, whisper.cpp `base`)
+| Set | Decoding | Corpus WER | Mean / worst per recording | Mean real-time factor |
+|---|---|---|---|---|
+| LibriSpeech sample (73 recordings, 481 s) | greedy (default) | 9.8% | 12.1% / 75% | 0.566 |
+| LibriSpeech sample | beam 5 | 9.4% | 12.3% / 100% | 0.610 |
+| Spoken fixtures (5, 46 s) | greedy (default) | 12.0% | 10.9% / 32% | 0.324 |
+| Spoken fixtures | beam 5 | 9.1% | 8.5% / 20% | 0.367 |
+
+Greedy decoding stays the default (D-041). The mean real-time factor is high because every recording costs at least one 30-second window, and most of these are short.

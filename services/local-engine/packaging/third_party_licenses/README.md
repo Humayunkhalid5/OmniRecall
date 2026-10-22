@@ -1,6 +1,8 @@
 # Licenses of the libraries bundled with Tesseract
 
-The Windows and macOS installers ship Tesseract with the libraries it loads (D-037). `scripts/package_engine.py` copies the license texts below into `engine/tesseract/licenses/` for each library it bundles, and fails the build if a bundled Windows DLL is not listed here. On macOS the texts come from each Homebrew keg, with the folders here as a fallback.
+The macOS installer ships Tesseract with the Homebrew libraries it loads (D-037). `scripts/package_engine.py` copies each keg's own license files into `engine/tesseract/licenses/`, and uses the folders here when a keg has none.
+
+Windows no longer uses these folders (D-042, OR-030). Its `tesseract.exe` is a static vcpkg build (`scripts/build_tesseract_windows.py`) with ten permissive libraries linked in: Leptonica, giflib, libjpeg-turbo, libpng, libspng, libwebp, OpenJPEG, LibTIFF, liblzma, and zlib. Their `copyright` files come from vcpkg and are bundled the same way, and the build fails if a library outside the reviewed list appears. The Windows DLL column below records the UB Mannheim build the Phase 6 installers shipped.
 
 Texts were fetched from the upstream repositories on 2026-10-22 (GNU license texts from the SPDX license list, because the GNU servers were unreachable from the build environment).
 
@@ -36,4 +38,4 @@ Texts were fetched from the upstream repositories on 2026-10-22 (GNU license tex
 | `zstd` | Zstandard | libzstd.dll | BSD-3-Clause OR GPL-2.0-only | github.com/facebook/zstd |
 | `zlib` | zlib | zlib1.dll | Zlib | github.com/madler/zlib |
 
-The copyleft entries (JBIG-KIT under the GPL; libiconv, libintl, libidn2, and libunistring under the LGPL) are separate shared libraries that the UB Mannheim Tesseract build loads (JBIG-KIT through LibTIFF, the others through libcurl). OmniRecall runs Tesseract as a separate program and does not link to any of them. Their source code is available from each upstream above; the UB Mannheim build is described at github.com/UB-Mannheim/tesseract/wiki. See OR-030 in `docs/bugs.md` for the plan to drop them.
+The copyleft entries (JBIG-KIT under the GPL; libiconv, libintl, libidn2, and libunistring under the LGPL) are separate shared libraries that the UB Mannheim Tesseract build loads (JBIG-KIT through LibTIFF, the others through libcurl). OmniRecall runs Tesseract as a separate program and does not link to any of them. Their source code is available from each upstream above; the UB Mannheim build is described at github.com/UB-Mannheim/tesseract/wiki. They were dropped by the static build (OR-030, fixed).

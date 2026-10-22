@@ -15,6 +15,7 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "scripts/package_engine.py"
+      - "scripts/build_tesseract_windows.py"
       - "scripts/smoke_engine.py"
       - "scripts/install_check.py"
       - "scripts/sbom.py"
@@ -66,7 +67,22 @@ jobs:
             sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev rpm xvfb tesseract-ocr tesseract-ocr-eng
           fi
           if [ "$RUNNER_OS" = "macOS" ]; then brew install tesseract dylibbundler; fi
-          if [ "$RUNNER_OS" = "Windows" ]; then choco install tesseract -y --no-progress; fi
+
+      - name: vcpkg binary cache (Windows Tesseract)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-tesseract-${{ hashFiles('scripts/build_tesseract_windows.py') }}
+      - name: Static Tesseract without curl or JBIG (Windows, OR-030)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-cache
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          python scripts/build_tesseract_windows.py build/tesseract-windows --vcpkg-root "$RUNNER_TEMP/vcpkg"
+          build/tesseract-windows/tesseract.exe --version
 
       - name: Engine folder (PyInstaller, audio decoder, Tesseract on Windows and macOS)
         shell: bash
@@ -129,8 +145,8 @@ jobs:
           $engine = Join-Path $dir "engine\omnirecall-engine.exe"
           $uv = "uv run --project services/local-engine --frozen python scripts/install_check.py"
           Start-Process $setup -ArgumentList "/S" -Wait
-          # The bundled Tesseract must work without the system one.
-          choco uninstall tesseract -y --no-progress
+          # The bundled Tesseract must be the only one.
+          if (Get-Command tesseract -ErrorAction SilentlyContinue) { throw "a system Tesseract is on PATH" }
           Invoke-Expression "$uv installed --app `"$app`" --engine `"$engine`""
           if ($LASTEXITCODE) { exit 1 }
           Start-Process $setup -ArgumentList "/S" -Wait

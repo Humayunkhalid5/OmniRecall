@@ -131,6 +131,11 @@ jobs:
       - name: Speech-to-text accuracy (whisper.cpp base)
         working-directory: services/local-engine
         run: uv run --frozen python ../../scripts/eval_transcription.py "$DATA/models" --librispeech "$RUNNER_TEMP/librispeech.parquet"
+      - name: Speech-to-text, the other decoding for comparison
+        working-directory: services/local-engine
+        run: |
+          other=$(uv run --frozen python -c "from omnirecall.extraction.transcribe import BEAM_SIZE; print(1 if BEAM_SIZE > 1 else 5)")
+          uv run --frozen python ../../scripts/eval_transcription.py "$DATA/models" --librispeech "$RUNNER_TEMP/librispeech.parquet" --beam-size "$other" | grep '"summary"'
       - name: Relevance (hybrid, vector, keyword)
         working-directory: services/local-engine
         run: |
