@@ -80,6 +80,7 @@ def test_damage_found_while_running_falls_back_then_repairs(tmp_path):
     ids = seeded(tmp_path)
     engine, events = make_engine(tmp_path)
     try:
+        assert engine.startup_reconciled.wait(30)
         wait_until(lambda: engine.index_verify({})["consistent"])
         # Damage the files under the running engine, then drop its open handle
         # (as a later read of a damaged file would).

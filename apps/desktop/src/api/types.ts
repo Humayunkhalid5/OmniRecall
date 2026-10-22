@@ -86,6 +86,29 @@ export interface EngineStatus {
   encryption_at_rest: boolean;
 }
 
+/** `status` while the engine is in recovery mode because its database is damaged (D-036). */
+export interface RecoveryStatus {
+  engine: "recovery";
+  database: {
+    state: "damaged" | "restart_needed";
+    /** `schema_too_new`: written by a newer OmniRecall; not damaged, nothing is offered. */
+    reason: "malformed" | "not_a_database" | "schema_too_new";
+    bytes: number;
+    path: string;
+    action: "recovered" | "reset" | null;
+  };
+}
+
+export interface RecoveryReport {
+  copied: Record<string, number>;
+  unreadable_ranges: Record<string, number>;
+  dropped_orphans: number;
+  requeued: number;
+  lost: number;
+  complete: boolean;
+  media_removed: number;
+}
+
 export interface ModelInfo {
   id: string;
   kind: "embedding" | "transcription";

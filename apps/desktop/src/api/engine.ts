@@ -13,6 +13,7 @@ import type {
   ItemDetail,
   ItemStatus,
   ModelInfo,
+  RecoveryReport,
   RpcError,
   ScreenshotStatus,
   SearchResponse,
@@ -85,6 +86,8 @@ export const engine = {
   verifyIndex: () => call<ConsistencyReport>("index.verify"),
   rebuildIndex: () => call<ConsistencyReport>("index.rebuild"),
   clearIndex: () => call<{ cleared: number }>("index.clear", { confirm: true }),
+  recoverDatabase: () => call<RecoveryReport>("database.recover", { confirm: true }),
+  resetDatabase: () => call<{ media_removed: number }>("database.reset", { confirm: true }),
   getSettings: () =>
     call<{ settings: Record<string, unknown>; defaults: Record<string, unknown> }>("settings.get"),
   updateSettings: (changes: Record<string, unknown>) =>

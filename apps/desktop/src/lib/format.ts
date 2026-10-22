@@ -55,6 +55,8 @@ const errorMessages: Record<string, string> = {
   transcription_model_missing: "The speech model is not installed. Set it up in Settings → Models.",
   audio_decoder_unavailable: "The audio decoder is missing from this installation.",
   unsupported_codec: "This audio encoding is not supported (for example Opus).",
+  recovery_lost_text:
+    "Its text was in a damaged part of the database and could not be recovered. Delete it, or add it again.",
 };
 
 export function describeError(code: string | null | undefined): string {

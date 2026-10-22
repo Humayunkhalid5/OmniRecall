@@ -145,6 +145,8 @@ class Engine:
         )
         self._vector_repair = threading.Event()
         self._repairing = False
+        # Set once the startup reconciliation has run (tests wait on it).
+        self.startup_reconciled = threading.Event()
         self.search_service = SearchService(
             self.repo, self.vectors, self.embedder, on_vector_failure=self._request_vector_repair
         )
@@ -302,6 +304,8 @@ class Engine:
             self._vector_repair.clear()
         except Exception as exc:  # noqa: BLE001 - reported in status, retried next start
             logs.error("startup_reconcile_failed", reason=type(exc).__name__)
+        finally:
+            self.startup_reconciled.set()
         last_unload_check = time.monotonic()
         last_retention = 0.0
         while not self._stop.is_set():

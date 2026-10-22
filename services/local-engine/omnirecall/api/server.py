@@ -9,6 +9,7 @@ import argparse
 import contextlib
 import os
 import signal
+import sqlite3
 import sys
 import threading
 import time
@@ -205,13 +206,33 @@ def main(argv: list[str] | None = None) -> int:
     logs.configure(data_dir / "logs", args.log_level)
 
     from omnirecall.app import Engine  # local import keeps `--help` fast
+    from omnirecall.recovery import DB_NAME, RecoveryEngine
+    from omnirecall.storage.salvage import check
 
     server = RpcServer(sys.stdin.buffer, sys.stdout.buffer)
-    engine = Engine(
-        data_dir=data_dir,
-        models_dir=Path(args.models_dir).resolve() if args.models_dir else None,
-        notify=server.notify,
-    )
+    engine: Engine | RecoveryEngine
+    damage = check(data_dir / "db" / DB_NAME)
+    if damage is None:
+        try:
+            engine = Engine(
+                data_dir=data_dir,
+                models_dir=Path(args.models_dir).resolve() if args.models_dir else None,
+                notify=server.notify,
+            )
+        except sqlite3.DatabaseError:
+            # Only damage found by the check leads to recovery. A locked or full
+            # disk is not damage, and offering to reset would be wrong.
+            damage = check(data_dir / "db" / DB_NAME)
+            if damage is None:
+                raise
+        except EngineError as exc:
+            if exc.code != "schema_too_new":
+                raise
+            damage = "schema_too_new"  # made by a newer version: no action offered
+    if damage is not None:
+        # Serve only the repair calls; the app shows the choice (D-036).
+        logs.error("database_damaged", reason=damage)
+        engine = RecoveryEngine(data_dir, damage)
     engine.register(server)
 
     signalled = threading.Event()
