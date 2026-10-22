@@ -223,7 +223,7 @@ mod platform {
         let seconds = unsafe {
             CGEventSourceSecondsSinceLastEventType(COMBINED_SESSION_STATE, ANY_INPUT_EVENT)
         };
-        (seconds.is_finite() && seconds >= 0.0).then(|| seconds as u64)
+        (seconds.is_finite() && seconds >= 0.0).then_some(seconds as u64)
     }
 
     pub fn locked() -> bool {
