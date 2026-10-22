@@ -30,6 +30,7 @@ from omnirecall.ingestion.pipeline import TRANSCRIPTION_MODEL_MISSING, Pipeline
 from omnirecall.ingestion.service import IngestionService
 from omnirecall.jobs.queue import JobRunner
 from omnirecall.models import ModelManager
+from omnirecall.native import limit_malloc_arenas
 from omnirecall.retrieval.search import SearchFilters, SearchService
 from omnirecall.settings import Settings, SettingsStore
 from omnirecall.storage.consistency import ConsistencyReport, ConsistencyService
@@ -97,6 +98,7 @@ class Engine:
         self.data_dir = data_dir
         self.models_dir = models_dir or data_dir / "models"
         self.media_root = data_dir / "media"
+        limit_malloc_arenas()  # before LanceDB and ONNX Runtime start their threads
         self.notify = notify
         self.started_at = time.monotonic()
         self._server: RpcServer | None = None
