@@ -17,7 +17,8 @@ The first packaged version of OmniRecall: a local-first app that indexes what yo
 - Installers are not code-signed or notarized; Windows and macOS will warn on first launch.
 - No Intel Mac build. No screenshot capture on Linux Wayland.
 - English only for OCR and search quality. Speech is recognized in other languages, but search for non-English text is only lightly evaluated.
-- Speech-to-text accuracy has not yet been measured with the real `base` model (`docs/measurements.md`).
+- Speech-to-text uses Whisper `base`: about 10% of words wrong on clear read English speech (LibriSpeech sample), more on names, rare words, and noisy recordings. Search still finds recordings by their other words, but quotes from transcripts may be wrong (`docs/measurements.md`).
+- The engine uses about 160 MB of memory when idle and about 380 MB with the search model loaded.
 - Secret detection is pattern-based and will miss some secrets; use exclusions for sensitive apps.
 
 See `docs/privacy.md`, `docs/threat-model.md`, `docs/troubleshooting.md`, and `docs/support-matrix.md`.

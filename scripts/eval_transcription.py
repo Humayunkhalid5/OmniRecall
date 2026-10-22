@@ -28,10 +28,16 @@ from omnirecall.extraction.transcript import build_text, clean_segments
 
 TESTS = Path(__file__).resolve().parents[1] / "services/local-engine/tests"
 sys.path.insert(0, str(TESTS))
-from wer import word_error_rate  # noqa: E402
+from wer import word_error_rate
 
 FIXTURES = TESTS / "fixtures/audio"
-SPOKEN = ("voice_memo.m4a", "meeting_note.mp3", "recipe.ogg", "lecture.flac", "voice_memo.wav")
+SPOKEN = (
+    "voice_memo.m4a",
+    "meeting_note.mp3",
+    "recipe.ogg",
+    "lecture.flac",
+    "voice_memo.wav",
+)
 
 
 def librispeech(parquet: Path, folder: Path) -> list[tuple[str, Path, str]]:
@@ -47,14 +53,18 @@ def librispeech(parquet: Path, folder: Path) -> list[tuple[str, Path, str]]:
 
 
 def run(
-    transcriber: WhisperCppTranscriber, decoder: AudioDecoder, cases: list[tuple[str, Path, str]]
+    transcriber: WhisperCppTranscriber,
+    decoder: AudioDecoder,
+    cases: list[tuple[str, Path, str]],
 ) -> list[dict]:
     rows = []
     for name, path, reference in cases:
         blocks = list(decoder.stream(path, 7200))
         seconds = sum(len(b) for b in blocks) / SAMPLE_RATE
         started = time.perf_counter()
-        result = transcribe_stream(transcriber, iter(blocks), lambda: False, lambda _p: None)
+        result = transcribe_stream(
+            transcriber, iter(blocks), lambda: False, lambda _p: None
+        )
         elapsed = time.perf_counter() - started
         text, _spans = build_text(clean_segments(result.segments))
         row = {
@@ -78,11 +88,15 @@ def summary(label: str, rows: list[dict]) -> dict:
         "summary": label,
         "cases": len(rows),
         # Corpus WER weights each case by its length, as speech benchmarks report it.
-        "corpus_wer": round(sum(r["wer"] * r["words"] for r in rows) / max(words, 1), 3),
+        "corpus_wer": round(
+            sum(r["wer"] * r["words"] for r in rows) / max(words, 1), 3
+        ),
         "mean_wer": round(float(np.mean([r["wer"] for r in rows])), 3),
         "max_wer": max(r["wer"] for r in rows),
         "english_detected": sum(r["language"] == "en" for r in rows),
-        "mean_real_time_factor": round(float(np.mean([r["real_time_factor"] for r in rows])), 3),
+        "mean_real_time_factor": round(
+            float(np.mean([r["real_time_factor"] for r in rows])), 3
+        ),
         "audio_seconds": round(sum(r["seconds"] for r in rows), 1),
     }
 

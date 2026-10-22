@@ -6,7 +6,12 @@ Every number here was measured, with the command that produced it. Nothing here 
 
 | ID | Machine | Notes |
 |---|---|---|
-| REF-CI-LINUX | Cloud container: 4 vCPU Intel Xeon (KVM), 15 GB RAM, Ubuntu 24.04, Python 3.12.3 | Development reference. Not representative of a laptop; repeat on real hardware before release (Phase 6). |
+| REF-CI-LINUX | Cloud container: 4 vCPU Intel Xeon (KVM), 15 GB RAM, Ubuntu 24.04, Python 3.12.3 | Development reference. Not representative of a laptop. |
+| GH-UBUNTU | GitHub-hosted runner `ubuntu-24.04` / `ubuntu-22.04` (4 vCPU, 16 GB) | Real-model and Linux installer jobs. Shared hardware; timings vary by about 10% between runs. |
+| GH-MACOS | GitHub-hosted runner `macos-14` (Apple M1, 3 cores, 7 GB) | macOS installer job. |
+| GH-WINDOWS | GitHub-hosted runner `windows-2022` (4 vCPU, 16 GB) | Windows installer job. |
+
+No laptop or desktop owned by a user has been measured yet. CPU and battery use during capture on a real laptop are still unmeasured (OR-001).
 
 ## Phase 0 (2026-10-21, REF-CI-LINUX)
 
@@ -109,4 +114,47 @@ The one-hour files were synthetic tones made with `ffmpeg -f lavfi -i sine=…`.
 The resampler test checks each output length and pitch: a 440 Hz tone at 8, 22.05, 44.1, and 48 kHz gives 870-890 zero crossings per second after resampling.
 
 ### Transcription
-**Not measured.** The `ggml-base.bin` model could not be downloaded from this environment, and it had not reached the project files by the end of the phase. The real-model accuracy test (`test_real_model_transcribes_fixtures_offline`, word error rate against the fixture scripts) and timing on real hardware run once the model is available (`OMNIRECALL_TEST_MODELS_DIR`). The engine tests use a randomly initialized whisper.cpp model of about 8 MB. It shows that the binding, windowing, and shutdown work, but it says nothing about accuracy or speed.
+**Not measured in Phase 5.** The `ggml-base.bin` model could not be downloaded from this environment. Measured in Phase 6 on CI instead; see below.
+
+## Phase 6 (2026-10-22)
+
+### Speech-to-text with the real whisper.cpp `base` model (GH-UBUNTU)
+Downloaded through the engine's own verified `ModelManager` in the `Real models` CI job, then run by `scripts/eval_transcription.py`. WER after normalization (`tests/wer.py`: lower case, no punctuation, number words as digits).
+
+| Set | Recordings | Audio | Corpus WER | English detected | Speed |
+|---|---|---|---|---|---|
+| LibriSpeech sample (`hf-internal-testing/librispeech_asr_dummy`, validation-clean, real read speech, CC BY 4.0; parquet SHA-256 `4e69a06f…27c603`) | 73 | 481 s | **9.8%** (mean per recording 12.1%, worst 75% on a 4-word line with a made-up name) | 73 of 73 | 2.6-3.3 s per recording |
+| Spoken fixtures (espeak-ng synthetic voices: M4A, MP3, Ogg Vorbis, FLAC, WAV) | 5 | 46 s | 12.0% (0%, 6.9%, 32%, 15.8%, 0%) | 5 of 5 | 2.7-3.2 s each |
+
+- Whisper processes audio in 30-second windows, so each recording costs at least about 2.6 s on this runner however short it is. On the longest LibriSpeech recording (29.4 s) that was 3.3 s, a real-time factor of 0.11, which suggests about 7 minutes for an hour of speech. A one-hour recording has not been timed with the real model.
+- Most errors are proper names (Quilter, Ruggedo, Calico) and rare words. The worst fixture, `recipe.ogg`, lost "of flour" and "of sugar" in a robotic voice.
+- Published figures for Whisper `base` on LibriSpeech test-clean are about 5% WER with OpenAI's fuller text normalizer and beam search; this sample, the simpler normalizer, and greedy decoding are not directly comparable.
+- Findability, the gate (D-038): each of the four distinct recordings, transcribed and indexed with the real models, was the top result for a paraphrased question (`test_real_models_make_every_recording_findable`). The network audit passed in the same job with both real models installed.
+
+### Relevance re-run (GH-UBUNTU, real MiniLM model)
+Unchanged from Phase 2 on the same corpus and queries:
+
+| Mode | recall@10 | MRR | Query latency median / p95 |
+|---|---|---|---|
+| Hybrid | 0.982 | 0.958 | 8.4 ms / 10.7 ms |
+| Vector only | 0.963 | 0.962 | 7.9 ms / 8.9 ms |
+| Keyword only | 0.901 | 0.881 | 0.7 ms / 1.4 ms |
+
+Label calibration (hybrid): **strong** relevant 100% of the time (n = 44), **possible** 50% (n = 8).
+
+### Installers (release workflow, unsigned)
+| Package | Runner | Size | Tesseract | Engine ready | Install, reinstall, uninstall checks |
+|---|---|---|---|---|---|
+| .deb | REF-CI-LINUX (built locally) and GH-UBUNTU 22.04 | 258.9 MiB (271,447,680 bytes) | system package (dependency) | about 1.15 s | all passed; data kept after removal |
+| .dmg | GH-MACOS | 202.7 MiB (212,570,519 bytes) | bundled 5.5.3, used after Homebrew's was uninstalled | 999 ms | all passed; data kept |
+| NSIS setup.exe | GH-WINDOWS | 143.7 MiB (150,671,640 bytes) | bundled 5.5.3.20260724, used after Chocolatey's was uninstalled | 1642 ms | all passed; data kept in `%APPDATA%` |
+
+"Engine ready" is from spawning the installed engine to its first `health` answer, on an empty data folder, as measured by `smoke_engine.py`. The installers do not contain models (83 MB search model, 148 MB speech model, downloaded on request).
+
+### Engine memory, packaged (REF-CI-LINUX, frozen one-dir engine from the .deb)
+| State | Resident memory |
+|---|---|
+| Idle after start, no model loaded | 159 MB |
+| Search model loaded, after indexing and searching | 382 MB |
+
+Phase 0's 24 MB was the engine skeleton run from source, before the storage, search, and extraction libraries (LanceDB, PyArrow, ONNX Runtime, whisper.cpp) were added. 159 MB is the idle figure for the engine as shipped. The search model is unloaded after 5 minutes idle; the speech model likewise.

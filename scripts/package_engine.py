@@ -66,6 +66,20 @@ def build_decoder() -> Path:
     return DECODER_SRC / "target" / "release" / f"omnirecall-audio-decode{EXE}"
 
 
+LICENSE_NAMES = ("LICENSE", "LICENCE", "COPYING", "COPYRIGHT", "NOTICE")
+
+
+def copy_license_files(source: Path, destination: Path) -> int:
+    """Copy the license and notice files at the top of `source` (not recursive)."""
+    copied = 0
+    for f in sorted(source.iterdir()) if source.is_dir() else []:
+        if f.is_file() and f.name.upper().startswith(LICENSE_NAMES):
+            destination.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, destination / f.name)
+            copied += 1
+    return copied
+
+
 def bundle_tesseract_windows(source: Path, target: Path) -> None:
     target.mkdir()
     # The UB Mannheim build: tesseract.exe and the DLLs beside it.
@@ -74,6 +88,8 @@ def bundle_tesseract_windows(source: Path, target: Path) -> None:
             shutil.copy2(f, target / f.name)
     (target / "tessdata").mkdir()
     shutil.copy2(source / "tessdata" / "eng.traineddata", target / "tessdata")
+    for folder in (source, source / "doc"):
+        copy_license_files(folder, target / "licenses" / "tesseract")
 
 
 def bundle_tesseract_macos(source: Path, target: Path) -> None:
@@ -102,6 +118,28 @@ def bundle_tesseract_macos(source: Path, target: Path) -> None:
         run(["codesign", "--force", "--sign", "-", str(f)], target)
     (target / "tessdata").mkdir()
     shutil.copy2(source / "share" / "tessdata" / "eng.traineddata", target / "tessdata")
+    # Each bundled library's license, from the Homebrew keg it came from.
+    bundled = {f.name for f in (target / "lib").glob("*.dylib")}
+    formulas = subprocess.run(
+        ["brew", "deps", "--installed", "tesseract"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    for formula in ["tesseract", *formulas]:
+        keg = Path(
+            subprocess.run(
+                ["brew", "--prefix", formula],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        ).resolve()
+        used = formula == "tesseract" or any(
+            (keg / "lib" / n).exists() for n in bundled
+        )
+        if used and not copy_license_files(keg, target / "licenses" / formula):
+            print(f"warning: no license file in the {formula} keg", flush=True)
 
 
 def default_tesseract_dir() -> Path | None:
@@ -152,6 +190,7 @@ def main() -> None:
             p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()
         )
         (target / "FILES.txt").write_text("\n".join(listing) + "\n", encoding="utf-8")
+        print("bundled Tesseract files:", *listing, sep="\n  ", flush=True)
 
     out = RESOURCES / "engine"
     replace_dir(out)

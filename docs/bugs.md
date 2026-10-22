@@ -8,10 +8,10 @@
 
 | ID | Type / Priority | Item | Impact | Required action / acceptance evidence | Status |
 |---|---|---|---|---|---|
-| OR-001 | RISK / P0 | Total runtime memory target of less than 20 MB is unrealistic with Python, OCR, embeddings, and transcription models loaded | Misleading product claim; performance failures | Define separate idle, search, OCR, and transcription memory budgets; benchmark on reference hardware; publish measured results | OPEN |
+| OR-001 | RISK / P0 | Total runtime memory target of less than 20 MB is unrealistic with Python, OCR, embeddings, and transcription models loaded | Misleading product claim; performance failures | Define separate idle, search, OCR, and transcription memory budgets; benchmark on reference hardware; publish measured results Phase 6 measured, packaged engine on REF-CI-LINUX: 159 MB idle, 382 MB with the search model loaded; the shell 174 MB (Phase 0, debug). CPU and battery during capture on a real laptop are still unmeasured (`measurements.md`). | OPEN |
 | OR-002 | RISK / P0 | Desktop and mobile background capture capabilities differ substantially | Mobile scope may be infeasible or violate platform rules | Keep mobile background capture out of MVP; design a separate companion for user-selected imports/voice notes | OPEN |
 | OR-003 | RISK / P0 | Screenshot and clipboard capture can collect highly sensitive content | Privacy and trust failure | Capture off by default, explicit consent, persistent indicator, global pause, exclusions, offline verification, and privacy tests | OPEN |
-| OR-004 | RISK / P0 | SQLite and LanceDB do not share a single ACID transaction | Search may return deleted/orphaned chunks or metadata | Implement tombstones, retryable reconciliation, consistency checks, and index rebuild; test crash between every cross-store write | OPEN |
+| OR-004 | RISK / P0 | SQLite and LanceDB do not share a single ACID transaction | Search may return deleted/orphaned chunks or metadata | Implement tombstones, retryable reconciliation, consistency checks, and index rebuild; test crash between every cross-store write Phase 6: fault injection crashes the engine at every cross-store write point and checks that restart converges (`test_fault_injection.py`); a damaged vector index is rebuilt from SQLite (D-035) and a damaged database opens in recovery mode (D-036). | OPEN |
 | OR-005 | RISK / P1 | The proposed 5% pixel-difference threshold may skip meaningful changes or retain too many frames | Recall or storage degradation | Compare perceptual hash and changed-pixel ratio; make threshold configurable; test scrolling, animation, cursor, multi-monitor, and static screens | OPEN |
 | OR-006 | RISK / P1 | Model and OCR library licenses may constrain bundling or commercial use | Release or distribution blocked | Verify and record license, attribution, source, version, and checksum for every dependency/model before packaging | OPEN |
 | OR-007 | RISK / P1 | Embedding model/tokenizer preprocessing mismatch can degrade search | Incorrect semantic retrieval | Pin tokenizer/model versions; add known-vector and retrieval regression tests; version all vectors | OPEN |
@@ -21,11 +21,11 @@
 | OR-011 | RISK / P1 | Search relevance has no evaluation corpus yet | Product may feel unreliable despite working technically | Create a labeled local test corpus and query set; track recall@k and ranking metrics before tuning | OPEN |
 | OR-012 | RISK / P2 | Native capture permissions and APIs vary by operating system/version | Uneven platform support | Maintain a tested support matrix; handle denied/unavailable states; do not claim unsupported platforms | OPEN |
 | OR-013 | RISK / P2 | Model download and update process may introduce supply-chain risk | Malicious or corrupted model files | Use pinned sources, checksums, license display, user-approved downloads, and safe replacement behavior | OPEN |
-| OR-014 | RISK / P2 | Uninstall, backup, and data-retention expectations are undefined on each OS | Users may lose data or leave sensitive files behind | Document uninstall behavior; offer export and clear-data flows; test upgrade and uninstall scenarios | OPEN |
+| OR-014 | RISK / P2 | Uninstall, backup, and data-retention expectations are undefined on each OS | Users may lose data or leave sensitive files behind | Document uninstall behavior; offer export and clear-data flows; test upgrade and uninstall scenarios Phase 6: uninstall keeps the data folder on every OS, documented in `troubleshooting.md` and `privacy.md`; the release workflow installs, reinstalls, and uninstalls each package and checks the data survives; upgrades from every earlier schema are tested (`test_upgrade.py`). | OPEN |
 | OR-015 | RISK / P1 | Linux Wayland routes screenshots through xdg-desktop-portal, which on many compositors asks the user per capture or per session; clipboard reads may require window focus | Periodic screenshot capture may be impossible or interactive on Wayland | Test GNOME and KDE on Wayland plus X11; ship Linux periodic capture as X11-only or clearly unavailable if silent capture is not permitted; record results in the support matrix | OPEN |
 | OR-016 | RISK / P1 | Recent macOS versions periodically ask users to re-approve screen recording; Windows capture APIs differ by version | Capture stops unexpectedly or behaves differently per OS version | Treat revoked permission as the permission-denied UX state; never prompt repeatedly; record behavior per OS version in the support matrix | OPEN |
 | OR-017 | RISK / P0 | Deleted content can survive in LanceDB old table versions, SQLite free pages, and the SQLite WAL file | Privacy breach: "deleted" data is recoverable from disk | Implement physical deletion (`design.md` §7); regression test scans raw store files for a deleted marker string | OPEN |
-| OR-018 | RISK / P1 | Bundling Python, ONNX Runtime, and models makes installers large and engine start slow; every embedded native binary must be signed/notarized on macOS | Poor install experience; release blocked by signing | Measure installer size and cold start in Phase 0; make large models optional user-approved downloads; include sidecar binaries in the signing pipeline. Phase 0 measured: frozen engine 462 MB unpacked / 180 MB gzip, cold start ~150 ms (`measurements.md`) | OPEN |
+| OR-018 | RISK / P1 | Bundling Python, ONNX Runtime, and models makes installers large and engine start slow; every embedded native binary must be signed/notarized on macOS | Poor install experience; release blocked by signing | Measure installer size and cold start in Phase 0; make large models optional user-approved downloads; include sidecar binaries in the signing pipeline. Phase 0 measured: frozen engine 462 MB unpacked / 180 MB gzip, cold start ~150 ms (`measurements.md`) Phase 6: installers 144 MB (Windows), 203 MB (macOS), 259 MB (Linux .deb), models downloaded separately; packaged engine ready in 1.0-1.6 s. Signing is still not set up (`release.md`). | OPEN |
 | OR-019 | RISK / P2 | The embedding model truncates inputs at about 256 tokens and handles non-English text poorly | Missed results for long chunks and non-English content | Verify chunk token length in the chunker; keep a non-English query set in the evaluation corpus; MVP claims English only | OPEN |
 | OR-020 | RISK / P2 | `pywhispercpp` publishes no macOS x86_64 wheel | Audio transcription unavailable on Intel Macs | Build whisper.cpp from source in the macOS x86_64 release job, or mark audio transcription unavailable on Intel Macs in the support matrix. Phase 5: still open; the support matrix marks Intel Macs as not built yet | OPEN |
 
@@ -76,15 +76,30 @@ Use this template when a real bug is found:
 
 ## Release-blocking checklist
 
-- [ ] No network transfer of captured content, embeddings, queries, or file paths.
-- [ ] Capture is off by default and fully stops when paused/disabled.
-- [ ] Delete and clear-index remove data from SQLite, FTS5, LanceDB, and owned media, and deleted content cannot be found in raw store files (including the WAL and old LanceDB versions).
-- [ ] Crash recovery and index reconciliation pass fault-injection tests.
-- [ ] The engine opens no network port; if the HTTP fallback is used, it is not reachable from the LAN and requires authentication.
-- [ ] Relevance (recall@10, MRR) and latency results are recorded against the labeled evaluation corpus.
+- [x] No network transfer of captured content, embeddings, queries, or file paths.
+- [x] Capture is off by default and fully stops when paused/disabled.
+- [x] Delete and clear-index remove data from SQLite, FTS5, LanceDB, and owned media, and deleted content cannot be found in raw store files (including the WAL and old LanceDB versions).
+- [x] Crash recovery and index reconciliation pass fault-injection tests.
+- [x] The engine opens no network port; if the HTTP fallback is used, it is not reachable from the LAN and requires authentication.
+- [x] Relevance (recall@10, MRR) and latency results are recorded against the labeled evaluation corpus.
 - [ ] Model/dependency licenses and checksums are documented.
 - [ ] Resource and search latency results are measured on documented hardware.
-- [ ] Clean install, upgrade, and uninstall behavior are tested.
+- [x] Clean install, upgrade, and uninstall behavior are tested.
+
+### OR-029 — The first real speech-to-text check failed for the wrong reasons
+- **Type:** BUG (test)
+- **Priority:** P2
+- **Status:** CLOSED
+- **Environment:** GitHub `ubuntu-24.04` runner, whisper.cpp `base` (`ggml-base.bin`, SHA-1 `465707469ff3…`), engine 0.1.0.
+- **Steps to reproduce:**
+  1. Install the real speech model and run `test_real_model_transcribes_fixtures_offline` (Phase 5 version).
+- **Expected:** the gate measures whether recordings are transcribed well enough to be found.
+- **Actual:** `recipe.ogg` failed at 42.9% WER. Whisper wrote "40 minutes" where the script says "forty minutes", and the check counted every number as an error. After normalizing numbers the clip is still at 32%, because the espeak-ng voice made "of flour" sound like "sunflower".
+- **Evidence:** first `Real models` job on PR #6; transcripts in `measurements.md` Phase 6.
+- **Root cause:** the metric lacked the number normalization speech benchmarks use, and a per-fixture 25% bound on robotic synthetic voices measured the voice more than the model.
+- **Fix plan:** normalize WER (`tests/wer.py`), gate on findability with the real models, and measure accuracy on real speech (D-038).
+- **Regression test:** `tests/test_audio.py::test_real_models_make_every_recording_findable` and `::test_real_model_transcribes_fixtures_offline` (now with a 35% sanity bound) in the `Real models` CI job.
+- **Resolution:** fixed in Phase 6; the job passes, and LibriSpeech WER is 9.8% on 73 recordings.
 
 ### OR-028 — A corruption test raced the engine's own start-up repair
 - **Type:** BUG (test)

@@ -39,7 +39,7 @@ Windows needs Tesseract installed (`choco install tesseract`); macOS needs `brew
 
 A tag also creates a draft pre-release with the installers, `SHA256SUMS.txt`, and `CHANGELOG.md` as notes.
 
-Verified so far: the Linux .deb was built, installed, reinstalled, and removed with these scripts on REF-CI-LINUX (Ubuntu 24.04). The macOS and Windows jobs are verified only when the workflow has run on them; see the Phase 6 report.
+Verified: all four packages were built, installed, reinstalled, and uninstalled by the workflow on PR #6 (sizes and start times in `measurements.md` Phase 6), and the Linux .deb also by hand on REF-CI-LINUX (Ubuntu 24.04).
 
 ## Not done yet
 
