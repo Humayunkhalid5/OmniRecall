@@ -124,3 +124,17 @@
 - **Reason:** design.md §3 ("no direct access to … arbitrary filesystem paths") and path-traversal control in §7.
 - **Docs updated:** `README.md` (architecture).
 - **Replaces:** none.
+
+### D-017 — Schema additions for settings and source metadata
+- **Date:** 2026-10-21
+- **Decision:** migration 0001 adds a `settings` table and `items.media_status`, `items.metadata_json`, `items.skip_reason`, beyond the original §5 list. Deleted items keep only ID, source type, timestamps, and status.
+- **Reason:** `design.md` §3 stores settings in SQLite and PRD §5 requires per-source metadata, but §5 had no place for either; §13 needs a `pruned` media state; `skipped` needs a reason. Clearing content fields on delete also frees the unique content hash for re-import.
+- **Docs updated:** `design.md` §5.
+- **Replaces:** none.
+
+### D-018 — Outbox ordering and recovery
+- **Date:** 2026-10-21
+- **Decision:** the pipeline embeds first, then commits chunks, FTS rows, and outbox entries in one SQLite transaction, then writes LanceDB and marks the entries done. An item becomes `indexed` only after that. Pending entries are replayed at startup (re-embedding from SQLite text through the embedding cache). Vector rebuild writes a side table first, then replaces the live table, because LanceDB OSS cannot rename tables.
+- **Reason:** keeps SQLite authoritative (rules §2.3) and makes every crash point recoverable (OR-004).
+- **Docs updated:** `docs/reports/phase-1.md`.
+- **Replaces:** none.
