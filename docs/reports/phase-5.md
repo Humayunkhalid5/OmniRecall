@@ -60,7 +60,8 @@
   - Met for the pipeline: every spoken fixture (M4A, WAV, MP3, Ogg Vorbis, FLAC) is decoded, windowed, transcribed, cleaned, chunked with timestamps, embedded, and found by search, all offline. The checks use a stand-in transcriber that returns the fixture's script with times, plus the real whisper.cpp binding loaded with a random model.
   - **Not yet met for real speech recognition.** The `ggml-base.bin` model is not in this environment, so the real-model test (word error rate under 25% on each spoken fixture, detected language English) has not run. That part of the gate stays open until it does.
 - **Found and fixed:**
-  - OR-027 (P1): a segmentation fault at exit after a transcription.
+  - OR-027 (P1): a segmentation fault at exit after a transcription, including after the idle timer had unloaded the model.
+  - On Windows, the idle unload did not happen at 0 seconds because the clock ticks about every 15 ms. The check is now "idle for at least", as for the embedding model.
   - OR-026: cancelling a running transcription did not stop it.
   - PyAV was dropped after finding GPL x264/x265 inside its wheels (D-031).
 - **Not done or skipped:**

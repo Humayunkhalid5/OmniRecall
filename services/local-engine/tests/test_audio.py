@@ -497,22 +497,29 @@ def test_real_model_transcribes_fixtures_offline(tmp_path, name):
     assert result.language == "en"
 
 
-@pytest.mark.parametrize("close", [True, False])
-def test_process_exits_cleanly_after_a_transcription(tmp_path, close):
-    """whisper.cpp logged into a freed Python callback during interpreter exit (OR-027)."""
+@pytest.mark.parametrize("ending", ["close", "exit", "unload_then_close"])
+def test_process_exits_cleanly_after_a_transcription(tmp_path, ending):
+    """whisper.cpp logged into a freed Python callback during interpreter exit (OR-027),
+    including after the idle timer had already unloaded the model."""
     import subprocess
     import sys
 
     from whisper_synth import write_random_model
 
     model = write_random_model(tmp_path / "tiny.bin")
+    endings = {
+        "close": "t.close()\n",
+        "exit": "",
+        "unload_then_close": "t.unload_if_idle(0)\nassert not t.loaded()\nt.close()\n",
+    }
     program = (
         "import numpy as np\n"
         "from pathlib import Path\n"
-        "from omnirecall.extraction.transcribe import WhisperCppTranscriber\n"
-        f"t = WhisperCppTranscriber(Path({str(model)!r}), 'whisper-base', threads=1)\n"
+        # Holding the module keeps the teardown order that exposed the idle-unload case.
+        "from omnirecall.extraction import transcribe\n"
+        f"t = transcribe.WhisperCppTranscriber(Path({str(model)!r}), 'whisper-base', threads=1)\n"
         "t.transcribe(np.zeros(16000, dtype=np.float32), 0, lambda s: None, lambda: False)\n"
-        + ("t.close()\n" if close else "")
+        + endings[ending]
     )
     done = subprocess.run([sys.executable, "-c", program], capture_output=True, timeout=120)
     assert done.returncode == 0, done.stderr[-500:]

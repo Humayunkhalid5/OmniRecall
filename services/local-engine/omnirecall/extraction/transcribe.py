@@ -11,6 +11,7 @@ and cancellation takes effect within a window.
 
 from __future__ import annotations
 
+import atexit
 import os
 import threading
 import time
@@ -148,6 +149,7 @@ class WhisperCppTranscriber:
         self._model: Any = None
         self._lock = threading.Lock()
         self._last_used = 0.0
+        self._exit_hook = False
 
     def available(self) -> bool:
         return self.model_path.is_file()
@@ -166,6 +168,10 @@ class WhisperCppTranscriber:
 
             # Silence whisper.cpp: its log lines go to stderr and may echo text.
             pw.whisper_log_set(_discard_log)
+            if not self._exit_hook:
+                # Runs before module teardown, so the model never outlives the log sink.
+                atexit.register(self._at_exit)
+                self._exit_hook = True
             started = time.monotonic()
             self._model = Model(
                 str(self.model_path),
@@ -229,26 +235,43 @@ class WhisperCppTranscriber:
             return None
         return str(code) if code else None
 
-    def close(self) -> None:
+    def _free(self) -> None:
         """Free the model while Python is fully running, then restore whisper.cpp's
-        default logger, so nothing calls back into Python during interpreter exit."""
-        with self._lock:
-            if self._model is None:
-                return
-            self._model = None
-            import gc
+        default logger, so nothing calls back into Python during interpreter exit
+        (OR-027). Called with the lock held."""
+        self._model = None
+        import gc
 
+        import _pywhispercpp as pw
+
+        gc.collect()
+        pw.whisper_log_set(None)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._model is not None:
+                self._free()
+
+    def _at_exit(self) -> None:
+        # A worker thread may still hold the lock; then only detach the logger.
+        if self._lock.acquire(timeout=1):
+            try:
+                if self._model is not None:
+                    self._free()
+            finally:
+                self._lock.release()
+        else:
             import _pywhispercpp as pw
 
-            gc.collect()
             pw.whisper_log_set(None)
 
     def unload_if_idle(self, idle_s: float) -> None:
         if self._model is None or not self._lock.acquire(blocking=False):
             return
         try:
-            if self._model is not None and time.monotonic() - self._last_used > idle_s:
-                self._model = None
+            # >= so that 0 means "now" even where the clock ticks every ~15 ms (Windows).
+            if self._model is not None and time.monotonic() - self._last_used >= idle_s:
+                self._free()
                 logs.info("model_unloaded", model=self.model_id)
         finally:
             self._lock.release()

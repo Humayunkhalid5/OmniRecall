@@ -95,8 +95,11 @@ Use this template when a real bug is found:
 - **Expected:** the engine exits with code 0.
 - **Actual:** the process exited with signal 11 (exit code -11) after the shutdown reply.
 - **Root cause:** whisper.cpp's log output was redirected to a Python lambda. At interpreter shutdown the lambda was freed while the native library still held a pointer to it, and the model's destructor logged through that pointer.
-- **Fix plan:** route whisper.cpp logs to a module-level function that lives as long as the process, free the model in `Engine.close()` before the database closes, and reset the log callback after the model is freed.
-- **Regression test:** `tests/test_audio.py::test_process_exits_cleanly_after_a_transcription`, run with and without an explicit close. It fails with the lambda.
+- **Fix plan:**
+  - Route whisper.cpp logs to a module-level function that lives as long as the process.
+  - Free the model in `Engine.close()` before the database closes, and reset the log callback after the model is freed.
+  - Also free the model and reset the callback on the idle unload and in an `atexit` hook, which runs before module teardown. The first fix missed two paths: a model already unloaded by the idle timer left the callback set, and a process that exited without `close()` depended on teardown order. CI found the second on Windows.
+- **Regression test:** `tests/test_audio.py::test_process_exits_cleanly_after_a_transcription`, with an explicit close, a plain exit, and an idle unload followed by close. Each case crashed before its fix.
 - **Resolution:** fixed in `extraction/transcribe.py` and `app.py`.
 
 ### OR-026 — Cancelling an item while it was being transcribed did not stop it
